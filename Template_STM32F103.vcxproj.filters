@@ -9,6 +9,12 @@
       <UniqueIdentifier>{f0b1278f-6d89-4973-b6a2-fe3b125e9aa2}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
+    <Filter Include="Source files\Drivers">
+      <UniqueIdentifier>{9d4ea189-6ba2-4ca3-9b28-ff50a8456404}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header files\Drivers">
+      <UniqueIdentifier>{3237ac82-e2e5-4dc7-927f-3461589110e3}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Resource files">
       <UniqueIdentifier>{cdd97c4e-bc25-4e2f-a1b6-d86589c37be9}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
@@ -47,6 +53,15 @@
     </ClCompile>
     <ClCompile Include="system_stm32f1xx.c">
       <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="Drivers\can.c">
+      <Filter>Source files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="Drivers\SPI.c">
+      <Filter>Source files\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="Drivers\uart.c">
+      <Filter>Source files\Drivers</Filter>
     </ClCompile>
     <None Include="stm32.props">
       <Filter>Source files\Device-specific files</Filter>
@@ -272,6 +287,18 @@
     </ClInclude>
     <ClInclude Include="stm32f1xx_hal_conf.h">
       <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="board_config.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+    <ClInclude Include="Drivers\can.h">
+      <Filter>Header files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="Drivers\SPI.h">
+      <Filter>Header files\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="Drivers\uart.h">
+      <Filter>Header files\Drivers</Filter>
     </ClInclude>
     <ClInclude Include="$(BSP_ROOT)\FreeRTOS\Source\CMSIS_RTOS\cmsis_os.h">
       <Filter>Header files\Device-specific files\FreeRTOS</Filter>

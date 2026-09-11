@@ -28,6 +28,16 @@
 /* Includes ------------------------------------------------------------------*/
 #include <stm32f1xx_hal.h>
 #include <../CMSIS_RTOS/cmsis_os.h>
+#include "board_config.h"
+#if BOARD_SPI_ENABLE
+#include "Drivers/SPI.h"
+#endif
+#if BOARD_CAN_ENABLE
+#include "Drivers/can.h"
+#endif
+#if BOARD_UART_ENABLE
+#include "Drivers/uart.h"
+#endif
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -50,6 +60,16 @@ int main(void)
 {
   HAL_Init();
   SystemClock_Config();
+
+#if BOARD_SPI_ENABLE
+  SPI_Init();
+#endif
+#if BOARD_CAN_ENABLE
+  CAN_Init();
+#endif
+#if BOARD_UART_ENABLE
+  UART_Init();
+#endif
 
 	__GPIOB_CLK_ENABLE();
 	GPIO_InitTypeDef GPIO_InitStructure;

@@ -1,0 +1,51 @@
+#ifndef BOARD_CONFIG_H
+#define BOARD_CONFIG_H
+
+#include <stm32f1xx_hal.h>
+
+/* 功能开关：1=启用，0=禁用 */
+#define BOARD_SPI_ENABLE                 0
+#define BOARD_CAN_ENABLE                 0
+#define BOARD_UART_ENABLE                0
+
+/* SPI配置：默认SPI2，PB12片选，PB13/PB14/PB15通信 */
+#define BOARD_SPI_INSTANCE               SPI2
+#define BOARD_SPI_CLK_ENABLE()           __HAL_RCC_SPI2_CLK_ENABLE()
+#define BOARD_SPI_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE()
+#define BOARD_SPI_CS_PORT                GPIOB
+#define BOARD_SPI_CS_PIN                 GPIO_PIN_12
+#define BOARD_SPI_SCK_PORT               GPIOB
+#define BOARD_SPI_SCK_PIN                GPIO_PIN_13
+#define BOARD_SPI_MISO_PORT              GPIOB
+#define BOARD_SPI_MISO_PIN               GPIO_PIN_14
+#define BOARD_SPI_MOSI_PORT              GPIOB
+#define BOARD_SPI_MOSI_PIN               GPIO_PIN_15
+#define BOARD_SPI_BAUD_PRESCALER         SPI_BAUDRATEPRESCALER_16
+#define BOARD_SPI_CPOL                   SPI_POLARITY_LOW
+#define BOARD_SPI_CPHA                   SPI_PHASE_1EDGE
+
+/* CAN配置：STM32F103C8仅有CAN1，默认PA11接收、PA12发送 */
+#define BOARD_CAN_INSTANCE               CAN1
+#define BOARD_CAN_CLK_ENABLE()           __HAL_RCC_CAN1_CLK_ENABLE()
+#define BOARD_CAN_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOA_CLK_ENABLE()
+#define BOARD_CAN_REMAP()                ((void)0)
+#define BOARD_CAN_RX_PORT                GPIOA
+#define BOARD_CAN_RX_PIN                 GPIO_PIN_11
+#define BOARD_CAN_TX_PORT                GPIOA
+#define BOARD_CAN_TX_PIN                 GPIO_PIN_12
+#define BOARD_CAN_PRESCALER              4U
+#define BOARD_CAN_RX_IRQn                USB_LP_CAN1_RX0_IRQn
+#define BOARD_CAN_SCE_IRQn               CAN1_SCE_IRQn
+
+/* UART配置：默认USART1，PA9发送、PA10接收，115200-8-N-1 */
+#define BOARD_UART_INSTANCE              USART1
+#define BOARD_UART_CLK_ENABLE()          __HAL_RCC_USART1_CLK_ENABLE()
+#define BOARD_UART_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOA_CLK_ENABLE()
+#define BOARD_UART_REMAP()               ((void)0)
+#define BOARD_UART_TX_PORT               GPIOA
+#define BOARD_UART_TX_PIN                GPIO_PIN_9
+#define BOARD_UART_RX_PORT               GPIOA
+#define BOARD_UART_RX_PIN                GPIO_PIN_10
+#define BOARD_UART_BAUD_RATE             115200U
+
+#endif
