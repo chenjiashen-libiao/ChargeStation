@@ -33,11 +33,11 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-osThreadId LEDThread1Handle, LEDThread2Handle;
 
 /* Private function prototypes -----------------------------------------------*/
-static void LED_Thread1(void const *argument);
-static void LED_Thread2(void const *argument);
+static void SystemClock_Config(void);
+static void LED_Thread(void const *argument);
+static void Error_Handler(void);
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -48,42 +48,58 @@ static void LED_Thread2(void const *argument);
   */
 int main(void)
 {
-  /* STM32F4xx HAL library initialization:
-       - Configure the Flash prefetch, instruction and Data caches
-       - Configure the Systick to generate an interrupt each 1 msec
-       - Set NVIC Group Priority to 4
-       - Global MSP (MCU Support Package) initialization
-     */
-	HAL_Init();  
-	
+  HAL_Init();
+  SystemClock_Config();
+
 	__GPIOB_CLK_ENABLE();
 	GPIO_InitTypeDef GPIO_InitStructure;
 
-	GPIO_InitStructure.Pin = GPIO_PIN_9 | GPIO_PIN_0;
-
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET); // LED低电平点亮，初始化为熄灭
+  GPIO_InitStructure.Pin = GPIO_PIN_9;
 	GPIO_InitStructure.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
 	GPIO_InitStructure.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-	/* Thread 1 definition */
-	osThreadDef(LED1, LED_Thread1, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
-  
-	 /*  Thread 2 definition */
-	osThreadDef(LED2, LED_Thread2, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
-  
-	/* Start thread 1 */
-	LEDThread1Handle = osThreadCreate(osThread(LED1), NULL);
-  
-	/* Start thread 2 */
-	LEDThread2Handle = osThreadCreate(osThread(LED2), NULL);
-  
-	/* Start scheduler */
+  osThreadDef(LED, LED_Thread, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
+  if (osThreadCreate(osThread(LED), NULL) == NULL)
+  {
+    Error_Handler();
+  }
+
 	osKernelStart();
 
-	  /* We should never get here as control is now taken by the scheduler */
 	for (;;)
-		;
+  {
+  }
+}
+
+static void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStructure = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStructure = {0};
+
+  RCC_OscInitStructure.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStructure.HSEState = RCC_HSE_ON;           // 外部8MHz晶振
+  RCC_OscInitStructure.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStructure.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStructure.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStructure.PLL.PLLMUL = RCC_PLL_MUL9;       // 8MHz × 9 = 72MHz
+  if (HAL_RCC_OscConfig(&RCC_OscInitStructure) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  RCC_ClkInitStructure.ClockType = RCC_CLOCKTYPE_SYSCLK |
+    RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStructure.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStructure.AHBCLKDivider = RCC_SYSCLK_DIV1;  // HCLK 72MHz
+  RCC_ClkInitStructure.APB1CLKDivider = RCC_HCLK_DIV2;   // PCLK1 36MHz
+  RCC_ClkInitStructure.APB2CLKDivider = RCC_HCLK_DIV1;   // PCLK2 72MHz
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStructure, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 void SysTick_Handler(void)
@@ -92,42 +108,22 @@ void SysTick_Handler(void)
 	osSystickHandler();
 }
 
-/**
-  * @brief  Toggle LED1
-  * @param  thread not used
-  * @retval None
-  */
-static void LED_Thread1(void const *argument)
+static void LED_Thread(void const *argument)
 {
 	(void) argument;
-  
+
 	for (;;)
 	{
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
-		osDelay(2000);
-		
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-		osThreadSuspend(LEDThread2Handle);
-		osDelay(2000);
-		
-		osThreadResume(LEDThread2Handle);
+    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_9);
+    osDelay(500);
 	}
 }
 
-/**
-  * @brief  Toggle LED2 thread
-  * @param  argument not used
-  * @retval None
-  */
-static void LED_Thread2(void const *argument)
+static void Error_Handler(void)
 {
-	uint32_t count;
-	(void) argument;
-  
-	for (;;)
+  __disable_irq();
+  while (1)
 	{
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
-		osDelay(200);
 	}
 }
 
