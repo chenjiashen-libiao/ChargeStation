@@ -69,11 +69,13 @@ int main(void)
   }
   SystemClock_Config();
 
+  Registration_Load();
+  CAN_Init();
+
 #if BOARD_SPI_ENABLE
   SPI_Init();
 #endif
-  Registration_Load();
-  CAN_Init();
+
 #if BOARD_UART_ENABLE
   UART_Init();
 #endif
@@ -88,14 +90,10 @@ int main(void)
 	GPIO_InitStructure.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-  osThreadDef(LED, LED_Thread, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
-  if (osThreadCreate(osThread(LED), NULL) == NULL)
-  {
-    Error_Handler();
-  }
-
-  osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 3072);
-  if (osThreadCreate(osThread(CAN_Rx), NULL) == NULL)
+  osThreadDef(LED, LED_Thread, osPriorityNormal, 0, 48);
+  osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 768);
+  if ((osThreadCreate(osThread(LED), NULL) == NULL) ||
+    (osThreadCreate(osThread(CAN_Rx), NULL) == NULL))
   {
     Error_Handler();
   }
