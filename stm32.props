@@ -15,12 +15,12 @@
 	</ItemDefinitionGroup>
 	<ItemDefinitionGroup>
 		<Link>
-			<LinkerScript Condition="'%(Link.LinkerScript)' == ''">$(BSP_ROOT)/STM32F1xxxx/LinkerScripts/STM32F103C8_flash.lds</LinkerScript>
+			<LinkerScript Condition="'%(Link.LinkerScript)' == ''">$(ProjectDir)STM32F103C8_app_flash.lds</LinkerScript>
 			<AdditionalOptions>--specs=nano.specs --specs=nosys.specs -Wl,--no-warn-rwx-segments %(Link.AdditionalOptions)</AdditionalOptions>
 		</Link>
 	</ItemDefinitionGroup>
 	<PropertyGroup>
-		<DefaultLinkerScript>$(BSP_ROOT)/STM32F1xxxx/LinkerScripts/STM32F103C8_flash.lds</DefaultLinkerScript>
+		<DefaultLinkerScript>$(ProjectDir)STM32F103C8_app_flash.lds</DefaultLinkerScript>
 	</PropertyGroup>
 
 	<ItemDefinitionGroup>

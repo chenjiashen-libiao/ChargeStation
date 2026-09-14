@@ -43,6 +43,8 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+const uint16_t g_ver __attribute__((section(".appinfo"))) = BOARD_VERSION;
+const uint16_t g_dev_type __attribute__((section(".appinfo"))) = BOARD_DEVICE_TYPE;
 
 /* Private function prototypes -----------------------------------------------*/
 static void SystemClock_Config(void);
@@ -58,7 +60,12 @@ static void Error_Handler(void);
   */
 int main(void)
 {
+  __enable_irq();
   HAL_Init();
+  if (HAL_RCC_DeInit() != HAL_OK)
+  {
+    Error_Handler();
+  }
   SystemClock_Config();
 
 #if BOARD_SPI_ENABLE

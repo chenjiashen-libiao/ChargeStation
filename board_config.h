@@ -8,6 +8,10 @@
 #define BOARD_CAN_ENABLE                 0
 #define BOARD_UART_ENABLE                0
 
+/* 程序信息：固定写入Flash的0x08004000起始位置 */
+#define BOARD_VERSION                     0x0001U
+#define BOARD_DEVICE_TYPE                 0x0001U
+
 /* SPI配置：默认SPI2，PB12片选，PB13/PB14/PB15通信 */
 #define BOARD_SPI_INSTANCE               SPI2
 #define BOARD_SPI_CLK_ENABLE()           __HAL_RCC_SPI2_CLK_ENABLE()

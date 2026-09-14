@@ -62,6 +62,8 @@
     <ClCompile Include="Drivers\SPI.c" />
     <ClCompile Include="Drivers\uart.c" />
     <None Include="stm32.props" />
+    <None Include="STM32F103C8_app_flash.lds" />
+    <None Include="CopyToHexBin.bat" />
     <ClCompile Include="$(BSP_ROOT)\STM32F1xxxx\StartupFiles\startup_stm32f103xb.c" />
     <ClCompile Include="$(BSP_ROOT)\FreeRTOS\Source\croutine.c" />
     <ClCompile Include="$(BSP_ROOT)\FreeRTOS\Source\event_groups.c" />
@@ -256,4 +258,7 @@
     <None Include="Template_STM32F103-Release.vgdbsettings" />
     <None Include="stm32.xml" />
   </ItemGroup>
+  <Target Name="GenerateUpgradePackage" AfterTargets="Build" Condition="'$(Platform)'=='VisualGDB'">
+    <Exec Command="call &quot;$(ProjectDir)CopyToHexBin.bat&quot; &quot;$(Configuration)&quot; &quot;Template_STM32F103&quot; &quot;$(ToolchainDir)&quot;" />
+  </Target>
 </Project>
