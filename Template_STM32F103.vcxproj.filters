@@ -9,10 +9,16 @@
       <UniqueIdentifier>{f0b1278f-6d89-4973-b6a2-fe3b125e9aa2}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
-    <Filter Include="Source files\Drivers">
+    <Filter Include="Source files\UserSource">
+      <UniqueIdentifier>{6149fbb4-1792-49fb-b5fd-f531661d3b7d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header files\UserSource">
+      <UniqueIdentifier>{192f736f-8eef-4707-a182-023668fb2491}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source files\UserSource\Drivers">
       <UniqueIdentifier>{9d4ea189-6ba2-4ca3-9b28-ff50a8456404}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header files\Drivers">
+    <Filter Include="Header files\UserSource\Drivers">
       <UniqueIdentifier>{3237ac82-e2e5-4dc7-927f-3461589110e3}</UniqueIdentifier>
     </Filter>
     <Filter Include="Resource files">
@@ -54,14 +60,23 @@
     <ClCompile Include="system_stm32f1xx.c">
       <Filter>Source files</Filter>
     </ClCompile>
-    <ClCompile Include="Drivers\can.c">
-      <Filter>Source files\Drivers</Filter>
+    <ClCompile Include="UserSource\Drivers\can.c">
+      <Filter>Source files\UserSource\Drivers</Filter>
     </ClCompile>
-    <ClCompile Include="Drivers\SPI.c">
-      <Filter>Source files\Drivers</Filter>
+    <ClCompile Include="UserSource\Drivers\SPI.c">
+      <Filter>Source files\UserSource\Drivers</Filter>
     </ClCompile>
-    <ClCompile Include="Drivers\uart.c">
-      <Filter>Source files\Drivers</Filter>
+    <ClCompile Include="UserSource\Drivers\uart.c">
+      <Filter>Source files\UserSource\Drivers</Filter>
+    </ClCompile>
+    <ClCompile Include="UserSource\CAN_CMD.c">
+      <Filter>Source files\UserSource</Filter>
+    </ClCompile>
+    <ClCompile Include="UserSource\registration.c">
+      <Filter>Source files\UserSource</Filter>
+    </ClCompile>
+    <ClCompile Include="UserSource\registration_rsa.c">
+      <Filter>Source files\UserSource</Filter>
     </ClCompile>
     <None Include="stm32.props">
       <Filter>Source files\Device-specific files</Filter>
@@ -291,14 +306,23 @@
     <ClInclude Include="board_config.h">
       <Filter>Header files</Filter>
     </ClInclude>
-    <ClInclude Include="Drivers\can.h">
-      <Filter>Header files\Drivers</Filter>
+    <ClInclude Include="UserSource\Drivers\can.h">
+      <Filter>Header files\UserSource\Drivers</Filter>
     </ClInclude>
-    <ClInclude Include="Drivers\SPI.h">
-      <Filter>Header files\Drivers</Filter>
+    <ClInclude Include="UserSource\Drivers\SPI.h">
+      <Filter>Header files\UserSource\Drivers</Filter>
     </ClInclude>
-    <ClInclude Include="Drivers\uart.h">
-      <Filter>Header files\Drivers</Filter>
+    <ClInclude Include="UserSource\Drivers\uart.h">
+      <Filter>Header files\UserSource\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\CAN_CMD.h">
+      <Filter>Header files\UserSource</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\registration.h">
+      <Filter>Header files\UserSource</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\registration_rsa.h">
+      <Filter>Header files\UserSource</Filter>
     </ClInclude>
     <ClInclude Include="$(BSP_ROOT)\FreeRTOS\Source\CMSIS_RTOS\cmsis_os.h">
       <Filter>Header files\Device-specific files\FreeRTOS</Filter>

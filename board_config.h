@@ -5,12 +5,15 @@
 
 /* 功能开关：1=启用，0=禁用 */
 #define BOARD_SPI_ENABLE                 0
-#define BOARD_CAN_ENABLE                 0
 #define BOARD_UART_ENABLE                0
 
 /* 程序信息：固定写入Flash的0x08004000起始位置 */
 #define BOARD_VERSION                     0x0001U
 #define BOARD_DEVICE_TYPE                 0x0001U
+
+/* 注册信息：STM32F103C8末段独占1KB页 */
+#define BOARD_UID_ADDRESS                 0x1FFFF7E8U
+#define BOARD_REGISTRATION_ADDRESS        0x0800E000U
 
 /* SPI配置：默认SPI2，PB12片选，PB13/PB14/PB15通信 */
 #define BOARD_SPI_INSTANCE               SPI2

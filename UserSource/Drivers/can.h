@@ -5,9 +5,7 @@
 extern "C" {
 #endif
 
-#include "board_config.h"
-
-#if BOARD_CAN_ENABLE
+#include "../../board_config.h"
 
 extern CAN_HandleTypeDef hcan;
 
@@ -20,8 +18,6 @@ uint32_t CAN_GetErrorStatus(void);
 uint8_t CAN_IsBusOff(void);
 HAL_StatusTypeDef CAN_ReInitMode(uint32_t mode);
 uint8_t CAN_LoopbackTest(void);  /* 回环测试 */
-
-#endif
 
 #ifdef __cplusplus
 }

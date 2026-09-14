@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#include "board_config.h"
+#include "../../board_config.h"
 
 #if BOARD_SPI_ENABLE
 

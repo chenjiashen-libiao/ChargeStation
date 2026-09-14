@@ -1,13 +1,21 @@
 #include "can.h"
-
-#if BOARD_CAN_ENABLE
+#include <string.h>
 
 CAN_HandleTypeDef hcan;
 
 static CAN_TxHeaderTypeDef txHeader;
-static CAN_RxHeaderTypeDef rxHeader;
-static uint8_t rxData[8];
-static volatile uint8_t rxFlag = 0;
+
+#define CAN_RX_QUEUE_SIZE 16U
+
+typedef struct
+{
+  CAN_RxHeaderTypeDef header;
+  uint8_t data[8];
+} CAN_RxFrame;
+
+static CAN_RxFrame rxQueue[CAN_RX_QUEUE_SIZE];
+static volatile uint8_t rxWriteIndex;
+static volatile uint8_t rxReadIndex;
 
 static void CAN_GPIO_Init(void);
 static void CAN_FilterConfig(void);
@@ -38,7 +46,6 @@ void CAN_Init(void)
 
   CAN_FilterConfig();
 
-  /* 使能 CAN 中断 */
   HAL_NVIC_SetPriority(BOARD_CAN_RX_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(BOARD_CAN_RX_IRQn);
   HAL_NVIC_SetPriority(BOARD_CAN_SCE_IRQn, 5, 0);
@@ -88,32 +95,45 @@ HAL_StatusTypeDef CAN_SendDataId(uint32_t id, uint8_t *data, uint8_t len)
 
 uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
 {
+  uint32_t interruptState;
   uint8_t i;
+  CAN_RxFrame *frame;
 
-  if (rxFlag == 0)
+  interruptState = __get_PRIMASK();
+  __disable_irq();
+  if (rxReadIndex == rxWriteIndex)
   {
+    if (interruptState == 0U)
+    {
+      __enable_irq();
+    }
     return 0;
   }
 
+  frame = &rxQueue[rxReadIndex];
   if (id != NULL)
   {
-    *id = (rxHeader.IDE == CAN_ID_STD) ? rxHeader.StdId : rxHeader.ExtId;
+    *id = (frame->header.IDE == CAN_ID_STD) ? frame->header.StdId : frame->header.ExtId;
   }
 
   if (len != NULL)
   {
-    *len = rxHeader.DLC;
+    *len = frame->header.DLC;
   }
 
   if (dataBuf != NULL)
   {
-    for (i = 0; i < rxHeader.DLC; i++)
+    for (i = 0; i < frame->header.DLC; i++)
     {
-      dataBuf[i] = rxData[i];
+      dataBuf[i] = frame->data[i];
     }
   }
 
-  rxFlag = 0;
+  rxReadIndex = (rxReadIndex + 1U) % CAN_RX_QUEUE_SIZE;
+  if (interruptState == 0U)
+  {
+    __enable_irq();
+  }
   return 1;
 }
 
@@ -140,9 +160,19 @@ HAL_StatusTypeDef CAN_ReInitMode(uint32_t mode)
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcanInst)
 {
-  if (HAL_CAN_GetRxMessage(hcanInst, CAN_RX_FIFO0, &rxHeader, rxData) == HAL_OK)
+  CAN_RxHeaderTypeDef header;
+  uint8_t data[8];
+  uint8_t nextWriteIndex;
+
+  if (HAL_CAN_GetRxMessage(hcanInst, CAN_RX_FIFO0, &header, data) == HAL_OK)
   {
-    rxFlag = 1;
+    nextWriteIndex = (rxWriteIndex + 1U) % CAN_RX_QUEUE_SIZE;
+    if (nextWriteIndex != rxReadIndex)
+    {
+      rxQueue[rxWriteIndex].header = header;
+      memcpy(rxQueue[rxWriteIndex].data, data, sizeof(data));
+      rxWriteIndex = nextWriteIndex;
+    }
   }
 }
 
@@ -183,7 +213,6 @@ static void CAN_FilterConfig(void)
   HAL_CAN_ConfigFilter(&hcan, &filter);
 }
 
-/* CAN 中断处理入口 */
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
   HAL_CAN_IRQHandler(&hcan);
@@ -194,10 +223,6 @@ void CAN1_SCE_IRQHandler(void)
   HAL_CAN_IRQHandler(&hcan);
 }
 
-/**
-  * @brief  CAN 回环测试（不需要外部设备）
-  * @retval 1=成功, 0=失败
-  */
 uint8_t CAN_LoopbackTest(void)
 {
   uint8_t txData[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
@@ -206,7 +231,6 @@ uint8_t CAN_LoopbackTest(void)
   uint8_t rxLen;
   uint32_t timeout;
 
-  /* 切换到回环模式 */
   HAL_CAN_Stop(&hcan);
   hcan.Init.Mode = CAN_MODE_LOOPBACK;
   if (HAL_CAN_Init(&hcan) != HAL_OK)
@@ -215,52 +239,32 @@ uint8_t CAN_LoopbackTest(void)
   }
   HAL_CAN_Start(&hcan);
 
-  /* 清除之前的接收标志 */
-  rxFlag = 0;
+  rxReadIndex = 0U;
+  rxWriteIndex = 0U;
 
-  /* 发送测试帧 */
   if (CAN_SendDataId(0x7FF, txData, 8) != HAL_OK)
   {
     CAN_ReInitMode(CAN_MODE_NORMAL);
     return 0;
   }
 
-  /* 等待接收 */
   timeout = HAL_GetTick() + 100;
-  while (rxFlag == 0)
+  while (rxReadIndex == rxWriteIndex)
   {
     if (HAL_GetTick() > timeout)
-    {
-      CAN_ReInitMode(CAN_MODE_NORMAL);
-      return 0;  /* 超时 */
-    }
-  }
-
-  /* 验证数据 */
-  if (!CAN_GetLastRx(&rxId, &rxLen, rxBuf))
-  {
-    CAN_ReInitMode(CAN_MODE_NORMAL);
-    return 0;
-  }
-
-  if (rxId != 0x7FF || rxLen != 8)
-  {
-    CAN_ReInitMode(CAN_MODE_NORMAL);
-    return 0;
-  }
-
-  for (int i = 0; i < 8; i++)
-  {
-    if (rxBuf[i] != txData[i])
     {
       CAN_ReInitMode(CAN_MODE_NORMAL);
       return 0;
     }
   }
 
-  /* 恢复正常模式 */
+  if (!CAN_GetLastRx(&rxId, &rxLen, rxBuf))
+  {
+    CAN_ReInitMode(CAN_MODE_NORMAL);
+    return 0;
+  }
+
   CAN_ReInitMode(CAN_MODE_NORMAL);
-  return 1;  /* 测试通过 */
+  return (rxId == 0x7FF && rxLen == 8 && memcmp(txData, rxBuf, 8) == 0) ? 1 : 0;
 }
 
-#endif

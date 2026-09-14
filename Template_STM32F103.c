@@ -30,13 +30,13 @@
 #include <../CMSIS_RTOS/cmsis_os.h>
 #include "board_config.h"
 #if BOARD_SPI_ENABLE
-#include "Drivers/SPI.h"
+#include "UserSource/Drivers/SPI.h"
 #endif
-#if BOARD_CAN_ENABLE
-#include "Drivers/can.h"
-#endif
+#include "UserSource/Drivers/can.h"
+#include "UserSource/CAN_CMD.h"
+#include "UserSource/registration.h"
 #if BOARD_UART_ENABLE
-#include "Drivers/uart.h"
+#include "UserSource/Drivers/uart.h"
 #endif
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +49,7 @@ const uint16_t g_dev_type __attribute__((section(".appinfo"))) = BOARD_DEVICE_TY
 /* Private function prototypes -----------------------------------------------*/
 static void SystemClock_Config(void);
 static void LED_Thread(void const *argument);
+static void CAN_Rx_Thread(void const *argument);
 static void Error_Handler(void);
 
 /* Private functions ---------------------------------------------------------*/
@@ -71,9 +72,8 @@ int main(void)
 #if BOARD_SPI_ENABLE
   SPI_Init();
 #endif
-#if BOARD_CAN_ENABLE
+  Registration_Load();
   CAN_Init();
-#endif
 #if BOARD_UART_ENABLE
   UART_Init();
 #endif
@@ -90,6 +90,12 @@ int main(void)
 
   osThreadDef(LED, LED_Thread, osPriorityNormal, 0, configMINIMAL_STACK_SIZE);
   if (osThreadCreate(osThread(LED), NULL) == NULL)
+  {
+    Error_Handler();
+  }
+
+  osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 3072);
+  if (osThreadCreate(osThread(CAN_Rx), NULL) == NULL)
   {
     Error_Handler();
   }
@@ -144,6 +150,19 @@ static void LED_Thread(void const *argument)
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_9);
     osDelay(500);
 	}
+}
+
+static void CAN_Rx_Thread(void const *argument)
+{
+  (void) argument;
+  osDelay(20);
+  CAN_CMD_SendSN();
+
+  for (;;)
+  {
+    CAN_CMD_Process();
+    osDelay(1);
+  }
 }
 
 static void Error_Handler(void)
