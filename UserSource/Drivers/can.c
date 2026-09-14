@@ -1,7 +1,7 @@
 #include "can.h"
 #include <string.h>
 
-CAN_HandleTypeDef hcan;
+static CAN_HandleTypeDef hcan;
 
 static CAN_TxHeaderTypeDef txHeader;
 
@@ -53,16 +53,6 @@ void CAN_Init(void)
 
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_BUSOFF | CAN_IT_ERROR);
   HAL_CAN_Start(&hcan);
-}
-
-HAL_StatusTypeDef CAN_SendByte(uint8_t data)
-{
-  return CAN_SendData(&data, 1);
-}
-
-HAL_StatusTypeDef CAN_SendData(uint8_t *data, uint8_t len)
-{
-  return CAN_SendDataId(0x0100, data, len);
 }
 
 HAL_StatusTypeDef CAN_SendDataId(uint32_t id, uint8_t *data, uint8_t len)
@@ -137,27 +127,6 @@ uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
   return 1;
 }
 
-uint32_t CAN_GetErrorStatus(void)
-{
-  return HAL_CAN_GetError(&hcan);
-}
-
-uint8_t CAN_IsBusOff(void)
-{
-  return ((hcan.Instance->ESR & CAN_ESR_BOFF) != 0) ? 1 : 0;
-}
-
-HAL_StatusTypeDef CAN_ReInitMode(uint32_t mode)
-{
-  HAL_CAN_Stop(&hcan);
-  hcan.Init.Mode = mode;
-  if (HAL_CAN_Init(&hcan) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-  return HAL_CAN_Start(&hcan);
-}
-
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcanInst)
 {
   CAN_RxHeaderTypeDef header;
@@ -221,50 +190,5 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 void CAN1_SCE_IRQHandler(void)
 {
   HAL_CAN_IRQHandler(&hcan);
-}
-
-uint8_t CAN_LoopbackTest(void)
-{
-  uint8_t txData[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
-  uint8_t rxBuf[8];
-  uint32_t rxId;
-  uint8_t rxLen;
-  uint32_t timeout;
-
-  HAL_CAN_Stop(&hcan);
-  hcan.Init.Mode = CAN_MODE_LOOPBACK;
-  if (HAL_CAN_Init(&hcan) != HAL_OK)
-  {
-    return 0;
-  }
-  HAL_CAN_Start(&hcan);
-
-  rxReadIndex = 0U;
-  rxWriteIndex = 0U;
-
-  if (CAN_SendDataId(0x7FF, txData, 8) != HAL_OK)
-  {
-    CAN_ReInitMode(CAN_MODE_NORMAL);
-    return 0;
-  }
-
-  timeout = HAL_GetTick() + 100;
-  while (rxReadIndex == rxWriteIndex)
-  {
-    if (HAL_GetTick() > timeout)
-    {
-      CAN_ReInitMode(CAN_MODE_NORMAL);
-      return 0;
-    }
-  }
-
-  if (!CAN_GetLastRx(&rxId, &rxLen, rxBuf))
-  {
-    CAN_ReInitMode(CAN_MODE_NORMAL);
-    return 0;
-  }
-
-  CAN_ReInitMode(CAN_MODE_NORMAL);
-  return (rxId == 0x7FF && rxLen == 8 && memcmp(txData, rxBuf, 8) == 0) ? 1 : 0;
 }
 
