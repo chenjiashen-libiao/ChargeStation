@@ -54,7 +54,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Template_STM32F103.c">
+    <ClCompile Include="ChargeStation.c">
       <Filter>Source files</Filter>
     </ClCompile>
     <ClCompile Include="system_stm32f1xx.c">
@@ -660,10 +660,10 @@
     <ClInclude Include="$(BSP_ROOT)\STM32F1xxxx\STM32F1xx_HAL_Driver\Inc\stm32f1xx_ll_wwdg.h">
       <Filter>Header files\Device-specific files\LL</Filter>
     </ClInclude>
-    <None Include="Template_STM32F103-Debug.vgdbsettings">
+    <None Include="ChargeStation-Debug.vgdbsettings">
       <Filter>VisualGDB settings</Filter>
     </None>
-    <None Include="Template_STM32F103-Release.vgdbsettings">
+    <None Include="ChargeStation-Release.vgdbsettings">
       <Filter>VisualGDB settings</Filter>
     </None>
     <None Include="stm32.xml">

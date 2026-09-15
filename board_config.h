@@ -15,6 +15,24 @@
 #define BOARD_UID_ADDRESS                 0x1FFFF7E8U
 #define BOARD_REGISTRATION_ADDRESS        0x0800E000U
 
+/* SI4463模拟SPI：与参考充电桩工程保持一致 */
+#define BOARD_SI4463_GPIO_PORT             GPIOB
+#define BOARD_SI4463_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()
+#define BOARD_SI4463_CSN_PIN               GPIO_PIN_3
+#define BOARD_SI4463_MISO_PIN              GPIO_PIN_4
+#define BOARD_SI4463_MOSI_IRQ_PIN          GPIO_PIN_5
+#define BOARD_SI4463_SCK_PIN               GPIO_PIN_6
+#define BOARD_SI4463_IRQN                  EXTI9_5_IRQn
+
+/* 充电采样：三相电流PA3~PA5，输出电压PA0~PA2，输入电压PA6/PA7/PB0 */
+#define BOARD_ADC_INSTANCE                 ADC1
+#define BOARD_ADC_DMA_INSTANCE             DMA1_Channel1
+#define BOARD_ADC_DMA_IRQn                 DMA1_Channel1_IRQn
+#define BOARD_ADC_GPIOA_PINS               (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | \
+											GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | \
+											GPIO_PIN_6 | GPIO_PIN_7)
+#define BOARD_ADC_GPIOB_PINS               GPIO_PIN_0
+
 /* SPI配置：默认SPI2，PB12片选，PB13/PB14/PB15通信 */
 #define BOARD_SPI_INSTANCE               SPI2
 #define BOARD_SPI_CLK_ENABLE()           __HAL_RCC_SPI2_CLK_ENABLE()

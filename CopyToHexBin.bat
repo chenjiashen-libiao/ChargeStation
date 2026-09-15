@@ -7,7 +7,7 @@ set "TARGET_NAME=%~2"
 set "TOOLCHAIN_DIR=%~3"
 
 if "%CONFIG%"=="" set "CONFIG=Debug"
-if "%TARGET_NAME%"=="" set "TARGET_NAME=Template_STM32F103"
+if "%TARGET_NAME%"=="" set "TARGET_NAME=ChargeStation"
 
 set "BUILD_DIR=%PROJECT_DIR%VisualGDB\%CONFIG%"
 set "HEXBIN_DIR=%PROJECT_DIR%hexbin"

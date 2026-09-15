@@ -33,6 +33,8 @@
 #include "UserSource/Drivers/SPI.h"
 #endif
 #include "UserSource/Drivers/can.h"
+#include "UserSource/Drivers/adc.h"
+#include "UserSource/Drivers/si4463_io.h"
 #include "UserSource/CAN_CMD.h"
 #include "UserSource/registration.h"
 #if BOARD_UART_ENABLE
@@ -71,6 +73,8 @@ int main(void)
 
   Registration_Load();
   CAN_Init();
+  SI4463_IO_Init();
+  ADC_Init();
 
 #if BOARD_SPI_ENABLE
   SPI_Init();
