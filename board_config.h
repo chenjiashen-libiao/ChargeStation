@@ -6,6 +6,7 @@
 /* 功能开关：1=启用，0=禁用 */
 #define BOARD_SPI_ENABLE                 0
 #define BOARD_UART_ENABLE                0
+#define BOARD_RF_TEST_FIXED_CONFIG       1
 
 /* 程序信息：固定写入Flash的0x08004000起始位置 */
 #define BOARD_VERSION                     0x0001U
@@ -23,6 +24,13 @@
 #define BOARD_SI4463_MOSI_IRQ_PIN          GPIO_PIN_5
 #define BOARD_SI4463_SCK_PIN               GPIO_PIN_6
 #define BOARD_SI4463_IRQN                  EXTI9_5_IRQn
+#define BOARD_WIRELESS_ADDRESS_STORAGE     0x08011C00U
+#define BOARD_WIRELESS_ADDRESS_DEFAULT     0x0000EEEEU
+#define BOARD_WIRELESS_ADDRESS_TEST        0x0000567DU
+#define BOARD_RF_HOME_CHANNEL_STORAGE      0x08011C04U
+#define BOARD_RF_FREQUENCY_STORAGE         0x08011C08U
+#define BOARD_RF_FREQUENCY_STEP_STORAGE    0x08011C0CU
+#define BOARD_RF_TX_POWER_STORAGE          0x08011C10U
 
 /* 充电采样：三相电流PA3~PA5，输出电压PA0~PA2，输入电压PA6/PA7/PB0 */
 #define BOARD_ADC_INSTANCE                 ADC1

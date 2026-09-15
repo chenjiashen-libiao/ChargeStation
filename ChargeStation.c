@@ -34,9 +34,10 @@
 #endif
 #include "UserSource/Drivers/can.h"
 #include "UserSource/Drivers/adc.h"
-#include "UserSource/Drivers/si4463_io.h"
+#include "UserSource/Drivers/si4463.h"
 #include "UserSource/CAN_CMD.h"
 #include "UserSource/registration.h"
+#include "UserSource/wireless_protocol.h"
 #if BOARD_UART_ENABLE
 #include "UserSource/Drivers/uart.h"
 #endif
@@ -47,11 +48,13 @@
 /* Private variables ---------------------------------------------------------*/
 const uint16_t g_ver __attribute__((section(".appinfo"))) = BOARD_VERSION;
 const uint16_t g_dev_type __attribute__((section(".appinfo"))) = BOARD_DEVICE_TYPE;
+static volatile uint8_t wirelessInitFailed;
 
 /* Private function prototypes -----------------------------------------------*/
 static void SystemClock_Config(void);
 static void LED_Thread(void const *argument);
 static void CAN_Rx_Thread(void const *argument);
+static void SI4463_Thread(void const *argument);
 static void Error_Handler(void);
 
 /* Private functions ---------------------------------------------------------*/
@@ -73,7 +76,6 @@ int main(void)
 
   Registration_Load();
   CAN_Init();
-  SI4463_IO_Init();
   ADC_Init();
 
 #if BOARD_SPI_ENABLE
@@ -96,8 +98,10 @@ int main(void)
 
   osThreadDef(LED, LED_Thread, osPriorityNormal, 0, 48);
   osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 768);
+  osThreadDef(SI4463, SI4463_Thread, osPriorityRealtime, 0, 416);
   if ((osThreadCreate(osThread(LED), NULL) == NULL) ||
-    (osThreadCreate(osThread(CAN_Rx), NULL) == NULL))
+    (osThreadCreate(osThread(CAN_Rx), NULL) == NULL) ||
+    (osThreadCreate(osThread(SI4463), NULL) == NULL))
   {
     Error_Handler();
   }
@@ -150,7 +154,7 @@ static void LED_Thread(void const *argument)
 	for (;;)
 	{
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_9);
-    osDelay(500);
+    osDelay(wirelessInitFailed ? 100U : 500U);
 	}
 }
 
@@ -163,6 +167,23 @@ static void CAN_Rx_Thread(void const *argument)
   for (;;)
   {
     CAN_CMD_Process();
+    osDelay(1);
+  }
+}
+
+static void SI4463_Thread(void const *argument)
+{ // 初始化无线模块并持续处理固定长收发事件
+  (void) argument;
+
+  if (!SI4463_Init())
+  {
+    wirelessInitFailed = 1U;
+  }
+  WirelessProtocol_Init();
+  for (;;)
+  {
+    SI4463_Process();
+    WirelessProtocol_Process();
     osDelay(1);
   }
 }

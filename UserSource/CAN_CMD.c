@@ -5,6 +5,7 @@
 #include "../board_config.h"
 #include "Drivers/can.h"
 #include "registration.h"
+#include "wireless_protocol.h"
 
 #define CAN_ID_SN_SEND             0x312U
 #define CAN_ID_SN_BIND             0x313U
@@ -14,6 +15,7 @@
 #define CAN_ID_RESPONSE_OK         0x60AU
 #define CAN_ID_UID_ENCRYPT_DATA    0x60BU
 #define CAN_ID_SN_GET              0x60DU
+#define CAN_ID_WIRELESS_SET        0x433U
 
 #define CAN_CMD_CIPHER_LENGTH      64U
 
@@ -42,6 +44,7 @@ static void CAN_CMD_HandleFrame(uint32_t id, uint8_t length, const uint8_t *data
   const uint8_t *sn = Registration_GetSN();
   uint16_t declaredLength;
   uint16_t copyLength;
+  uint32_t wirelessAddress;
   uint8_t response[2] = {0U, 0U};
 
   switch (id)
@@ -113,6 +116,21 @@ static void CAN_CMD_HandleFrame(uint32_t id, uint8_t length, const uint8_t *data
         (memcmp(data, sn, 7U) == 0))
       {
         deviceNumber = data[7];
+      }
+      break;
+
+    case CAN_ID_WIRELESS_SET:
+      if ((length == 8U) && (data[7] == deviceNumber))
+      {
+        wirelessAddress = (uint32_t)data[0] |
+          ((uint32_t)data[1] << 8) |
+          ((uint32_t)data[2] << 16) |
+          ((uint32_t)data[3] << 24);
+        if ((wirelessAddress != 0U) &&
+          (wirelessAddress != WirelessProtocol_GetAddress()))
+        {
+          WirelessProtocol_SaveAddress(wirelessAddress);
+        }
       }
       break;
 

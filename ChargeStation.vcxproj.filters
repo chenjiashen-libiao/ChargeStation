@@ -66,7 +66,7 @@
     <ClCompile Include="UserSource\Drivers\can.c">
       <Filter>Source files\UserSource\Drivers</Filter>
     </ClCompile>
-    <ClCompile Include="UserSource\Drivers\si4463_io.c">
+    <ClCompile Include="UserSource\Drivers\si4463.c">
       <Filter>Source files\UserSource\Drivers</Filter>
     </ClCompile>
     <ClCompile Include="UserSource\Drivers\SPI.c">
@@ -76,6 +76,9 @@
       <Filter>Source files\UserSource\Drivers</Filter>
     </ClCompile>
     <ClCompile Include="UserSource\CAN_CMD.c">
+      <Filter>Source files\UserSource</Filter>
+    </ClCompile>
+    <ClCompile Include="UserSource\wireless_protocol.c">
       <Filter>Source files\UserSource</Filter>
     </ClCompile>
     <ClCompile Include="UserSource\registration.c">
@@ -318,7 +321,13 @@
     <ClInclude Include="UserSource\Drivers\can.h">
       <Filter>Header files\UserSource\Drivers</Filter>
     </ClInclude>
-    <ClInclude Include="UserSource\Drivers\si4463_io.h">
+    <ClInclude Include="UserSource\Drivers\si4463.h">
+      <Filter>Header files\UserSource\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\Drivers\si446x_defs.h">
+      <Filter>Header files\UserSource\Drivers</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\Drivers\radio_config_Si4463.h">
       <Filter>Header files\UserSource\Drivers</Filter>
     </ClInclude>
     <ClInclude Include="UserSource\Drivers\SPI.h">
@@ -328,6 +337,9 @@
       <Filter>Header files\UserSource\Drivers</Filter>
     </ClInclude>
     <ClInclude Include="UserSource\CAN_CMD.h">
+      <Filter>Header files\UserSource</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\wireless_protocol.h">
       <Filter>Header files\UserSource</Filter>
     </ClInclude>
     <ClInclude Include="UserSource\registration.h">

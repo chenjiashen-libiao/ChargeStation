@@ -60,10 +60,11 @@
     <ClCompile Include="system_stm32f1xx.c" />
     <ClCompile Include="UserSource\Drivers\adc.c" />
     <ClCompile Include="UserSource\Drivers\can.c" />
-    <ClCompile Include="UserSource\Drivers\si4463_io.c" />
+    <ClCompile Include="UserSource\Drivers\si4463.c" />
     <ClCompile Include="UserSource\Drivers\SPI.c" />
     <ClCompile Include="UserSource\Drivers\uart.c" />
     <ClCompile Include="UserSource\CAN_CMD.c" />
+    <ClCompile Include="UserSource\wireless_protocol.c" />
     <ClCompile Include="UserSource\registration.c" />
     <ClCompile Include="UserSource\registration_rsa.c" />
     <None Include="stm32.props" />
@@ -230,10 +231,13 @@
     <ClInclude Include="board_config.h" />
     <ClInclude Include="UserSource\Drivers\adc.h" />
     <ClInclude Include="UserSource\Drivers\can.h" />
-    <ClInclude Include="UserSource\Drivers\si4463_io.h" />
+    <ClInclude Include="UserSource\Drivers\si4463.h" />
+    <ClInclude Include="UserSource\Drivers\si446x_defs.h" />
+    <ClInclude Include="UserSource\Drivers\radio_config_Si4463.h" />
     <ClInclude Include="UserSource\Drivers\SPI.h" />
     <ClInclude Include="UserSource\Drivers\uart.h" />
     <ClInclude Include="UserSource\CAN_CMD.h" />
+    <ClInclude Include="UserSource\wireless_protocol.h" />
     <ClInclude Include="UserSource\registration.h" />
     <ClInclude Include="UserSource\registration_rsa.h" />
     <ClInclude Include="$(BSP_ROOT)\STM32F1xxxx\CMSIS_HAL\Include\core_sc300.h" />
