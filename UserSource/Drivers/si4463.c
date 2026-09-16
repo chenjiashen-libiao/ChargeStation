@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define SI4463_CTS_ATTEMPTS               20U
-#define SI4463_TX_COMPLETE_ATTEMPTS       100U
+#define SI4463_TX_COMPLETE_ATTEMPTS       20U
 #define SI4463_PACKET_RX_PENDING          0x10U
 #define SI4463_PACKET_CRC_ERROR           0x08U
 #define SI4463_PACKET_TX_COMPLETE         0x20U
@@ -336,6 +336,7 @@ static void SI4463_SetMosiMode(void)
 
   HAL_NVIC_DisableIRQ(BOARD_SI4463_IRQN);
   EXTI->IMR &= ~BOARD_SI4463_MOSI_IRQ_PIN;
+  __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
   HAL_GPIO_WritePin(BOARD_SI4463_GPIO_PORT, BOARD_SI4463_MOSI_IRQ_PIN, GPIO_PIN_SET);
   gpioInit.Pin = BOARD_SI4463_MOSI_IRQ_PIN;
   gpioInit.Mode = GPIO_MODE_OUTPUT_PP;
@@ -625,11 +626,17 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
   for (attempts = 0U; attempts < SI4463_TX_COMPLETE_ATTEMPTS; attempts++)
   {
     osDelay(1);
-    if (SI4463_ReadInterruptStatus(status) &&
-      ((status[3] & SI4463_PACKET_TX_COMPLETE) != 0U))
+    if ((interruptPending != 0U) ||
+      (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
+        BOARD_SI4463_MOSI_IRQ_PIN) == GPIO_PIN_RESET))
     {
-      completed = 1U;
-      break;
+      SI4463_TakeInterrupt();
+      if (SI4463_ReadInterruptStatus(status) &&
+        ((status[3] & SI4463_PACKET_TX_COMPLETE) != 0U))
+      {
+        completed = 1U;
+        break;
+      }
     }
   }
   SI4463_ChangeState(3U);
