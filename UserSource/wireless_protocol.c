@@ -248,10 +248,16 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
     return 0U;
   }
   checksum = (uint16_t)request[3] | ((uint16_t)request[4] << 8);
-  if ((checksum != WirelessProtocol_Checksum(request + 5U, contentLength)) ||
-    (request[5] != (uint8_t)wirelessAddress) ||
-    (request[6] != (uint8_t)(wirelessAddress >> 8)) ||
-    ((request[1] & 0x0CU) != 0U))
+  if (checksum != WirelessProtocol_Checksum(request + 5U, contentLength))
+  {
+    return 0U;
+  }
+  if ((request[5] != (uint8_t)wirelessAddress) ||
+    (request[6] != (uint8_t)(wirelessAddress >> 8)))
+  {
+    return 0U;
+  }
+  if ((request[1] & 0x0CU) != 0U)
   {
     return 0U;
   }

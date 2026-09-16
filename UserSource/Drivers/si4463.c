@@ -698,12 +698,17 @@ static uint8_t SI4463_ReadVariablePacket(uint8_t *data, uint8_t *length)
   }
   SI4463_Select();
   SI4463_ExchangeByte(READ_RX_FIFO);
-  for (index = 0U; index <= SI4463_VARIABLE_MAX_FIELD2; index++)
+  field2Length = SI4463_ExchangeByte(0xFFU);
+  if ((field2Length >= SI4463_VARIABLE_MIN_FIELD2) &&
+    (field2Length <= SI4463_VARIABLE_MAX_FIELD2))
   {
-    fifo[index] = SI4463_ExchangeByte(0xFFU);
+    fifo[0] = field2Length;
+    for (index = 1U; index <= field2Length; index++)
+    {
+      fifo[index] = SI4463_ExchangeByte(0xFFU);
+    }
   }
   SI4463_Deselect();
-  field2Length = fifo[0];
   if ((field2Length < SI4463_VARIABLE_MIN_FIELD2) ||
     (field2Length > SI4463_VARIABLE_MAX_FIELD2))
   {
