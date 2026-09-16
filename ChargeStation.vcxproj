@@ -58,8 +58,10 @@
   <ItemGroup>
     <ClCompile Include="ChargeStation.c" />
     <ClCompile Include="system_stm32f1xx.c" />
+    <ClCompile Include="UserSource\charge_control.c" />
     <ClCompile Include="UserSource\Drivers\adc.c" />
     <ClCompile Include="UserSource\Drivers\can.c" />
+    <ClCompile Include="UserSource\Drivers\charge_pwm.c" />
     <ClCompile Include="UserSource\Drivers\si4463.c" />
     <ClCompile Include="UserSource\Drivers\SPI.c" />
     <ClCompile Include="UserSource\Drivers\uart.c" />
@@ -67,6 +69,8 @@
     <ClCompile Include="UserSource\wireless_protocol.c" />
     <ClCompile Include="UserSource\registration.c" />
     <ClCompile Include="UserSource\registration_rsa.c" />
+    <ClInclude Include="UserSource\charge_control.h" />
+    <ClInclude Include="UserSource\Drivers\charge_pwm.h" />
     <None Include="stm32.props" />
     <None Include="STM32F103C8_app_flash.lds" />
     <None Include="CopyToHexBin.bat" />

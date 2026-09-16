@@ -1,5 +1,6 @@
 #include "adc.h"
 #include "board_config.h"
+#include "../charge_control.h"
 
 volatile uint16_t g_ADC_ConvertedValue[CHARGE_ADC_CHANNEL_COUNT];
 volatile int32_t g_out_Volt[CHARGE_PHASE_COUNT];
@@ -132,5 +133,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
   if (hadc->Instance == BOARD_ADC_INSTANCE)
   {
     ADC_UpdateMeasurements();
+    ChargeControl_Update();
   }
 }

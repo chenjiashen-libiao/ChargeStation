@@ -36,6 +36,7 @@
 #include "UserSource/Drivers/adc.h"
 #include "UserSource/Drivers/si4463.h"
 #include "UserSource/CAN_CMD.h"
+#include "UserSource/charge_control.h"
 #include "UserSource/registration.h"
 #include "UserSource/wireless_protocol.h"
 #if BOARD_UART_ENABLE
@@ -76,6 +77,7 @@ int main(void)
 
   Registration_Load();
   CAN_Init();
+  ChargeControl_Init();
   ADC_Init();
 
 #if BOARD_SPI_ENABLE
@@ -99,9 +101,11 @@ int main(void)
   osThreadDef(LED, LED_Thread, osPriorityNormal, 0, 48);
   osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 768);
   osThreadDef(SI4463, SI4463_Thread, osPriorityRealtime, 0, 416);
+  osThreadDef(Charge, ChargeControl_Task, osPriorityNormal, 0, 128);
   if ((osThreadCreate(osThread(LED), NULL) == NULL) ||
     (osThreadCreate(osThread(CAN_Rx), NULL) == NULL) ||
-    (osThreadCreate(osThread(SI4463), NULL) == NULL))
+    (osThreadCreate(osThread(SI4463), NULL) == NULL) ||
+    (osThreadCreate(osThread(Charge), NULL) == NULL))
   {
     Error_Handler();
   }

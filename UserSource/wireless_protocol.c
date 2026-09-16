@@ -1,4 +1,5 @@
 #include "wireless_protocol.h"
+#include "charge_control.h"
 #include "Drivers/adc.h"
 #include "Drivers/si4463.h"
 #include "board_config.h"
@@ -286,7 +287,8 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
     WirelessProtocol_PutU16(phaseData, WirelessProtocol_ClampU16(g_out_Volt[phase]));
     WirelessProtocol_PutS16(phaseData + 2U, WirelessProtocol_Current10mA(g_I[phase]));
     WirelessProtocol_PutU16(phaseData + 4U, g_intvolt[phase]);
-    WirelessProtocol_PutU16(phaseData + 6U, 0U);
+    WirelessProtocol_PutU16(phaseData + 6U,
+      WirelessProtocol_ClampU16(ChargeControl_GetTargetCurrent(phase) / 10));
     phaseData[8] = WirelessProtocol_GetPhaseFlags(phase);
   }
   checksum = WirelessProtocol_Checksum(response + 5U, 40U);
@@ -300,7 +302,7 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
 }
 
 static uint8_t WirelessProtocol_GetFlags(void)
-{ // 生成当前采样能力可确定的充电桩状态标志
+{ // 生成充电桩全局状态标志
   uint8_t flags = 0x40U;
 
   if ((g_intvolt[0] < 5200U) && (g_intvolt[1] < 5200U) && (g_intvolt[2] < 5200U))
@@ -313,14 +315,30 @@ static uint8_t WirelessProtocol_GetFlags(void)
   {
     flags |= 0x02U;
   }
+  if (ChargeControl_HasBreakFault())
+  {
+    flags |= 0x04U;
+  }
+  if (ChargeControl_IsMosEnabled())
+  {
+    flags |= 0x08U;
+  }
+  if (ChargeControl_IsMainEnabled())
+  {
+    flags |= 0x10U;
+  }
   return flags;
 }
 
 static uint8_t WirelessProtocol_GetPhaseFlags(uint8_t phase)
-{ // 按参考协议生成单相采样状态标志
+{ // 按参考协议生成单相实时状态标志
   uint8_t flags = 0U;
   int32_t outputVoltage = g_out_Volt[phase];
 
+  if (ChargeControl_IsPhaseEnabled(phase))
+  {
+    flags |= 0x01U;
+  }
   if ((outputVoltage > 200) && (outputVoltage < 5200))
   {
     flags |= 0x02U;
@@ -332,6 +350,10 @@ static uint8_t WirelessProtocol_GetPhaseFlags(uint8_t phase)
   if ((g_I[phase] > 50000) || (g_I[phase] < -50000))
   {
     flags |= 0x08U;
+  }
+  if (ChargeControl_IsMainEnabled())
+  {
+    flags |= 0x10U;
   }
   return flags;
 }
