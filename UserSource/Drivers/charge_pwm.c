@@ -120,6 +120,6 @@ void ChargePWM_SetMosEnabled(uint8_t enabled)
 }
 
 uint8_t ChargePWM_IsMosEnabled(void)
-{ // 返回输出MOS是否开启
-  return HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == GPIO_PIN_RESET;
+{ // 按输出锁存状态返回MOS是否开启
+  return (GPIOB->ODR & GPIO_PIN_7) == 0U;
 }

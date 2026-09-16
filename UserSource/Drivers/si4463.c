@@ -34,6 +34,7 @@ static uint8_t homeChannel;
 static uint8_t txPower;
 static uint16_t frequencyBase;
 static uint16_t frequencyStep;
+static uint32_t spiInterruptState;
 
 static void SI4463_InitIo(void);
 static void SI4463_SetMosiMode(void);
@@ -390,6 +391,8 @@ static void SI4463_SetIrqMode(void)
 
 static void SI4463_Select(void)
 { // 开始模拟SPI事务
+  spiInterruptState = __get_PRIMASK();
+  __disable_irq();
   SI4463_SetMosiMode();
   BOARD_SI4463_GPIO_PORT->BRR = BOARD_SI4463_CSN_PIN;
 }
@@ -398,6 +401,10 @@ static void SI4463_Deselect(void)
 { // 结束模拟SPI事务并恢复NIRQ
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_CSN_PIN;
   SI4463_SetIrqMode();
+  if (spiInterruptState == 0U)
+  {
+    __enable_irq();
+  }
 }
 
 static uint8_t SI4463_ExchangeByte(uint8_t txData)
