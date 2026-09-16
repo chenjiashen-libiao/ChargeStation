@@ -27,6 +27,7 @@ static void WirelessProtocol_ProcessVariable(const uint8_t *frame, uint8_t lengt
 static void WirelessProtocol_SendHomeStatus(const uint8_t *request);
 static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8_t length);
 static uint8_t WirelessProtocol_GetFlags(void);
+static uint8_t WirelessProtocol_GetPhaseFlags(uint8_t phase);
 static uint16_t WirelessProtocol_GetOutputVoltage(void);
 static int16_t WirelessProtocol_GetTotalCurrent(void);
 static void WirelessProtocol_PutU16(uint8_t *buffer, uint16_t value);
@@ -286,7 +287,7 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
     WirelessProtocol_PutS16(phaseData + 2U, WirelessProtocol_Current10mA(g_I[phase]));
     WirelessProtocol_PutU16(phaseData + 4U, g_intvolt[phase]);
     WirelessProtocol_PutU16(phaseData + 6U, 0U);
-    phaseData[8] = 0U;
+    phaseData[8] = WirelessProtocol_GetPhaseFlags(phase);
   }
   checksum = WirelessProtocol_Checksum(response + 5U, 40U);
   response[3] = (uint8_t)checksum;
@@ -311,6 +312,26 @@ static uint8_t WirelessProtocol_GetFlags(void)
     (g_I[2] > 50000) || (g_I[2] < -50000))
   {
     flags |= 0x02U;
+  }
+  return flags;
+}
+
+static uint8_t WirelessProtocol_GetPhaseFlags(uint8_t phase)
+{ // 按参考协议生成单相采样状态标志
+  uint8_t flags = 0U;
+  int32_t outputVoltage = g_out_Volt[phase];
+
+  if ((outputVoltage > 200) && (outputVoltage < 5200))
+  {
+    flags |= 0x02U;
+  }
+  if (g_intvolt[phase] > 5200U)
+  {
+    flags |= 0x04U;
+  }
+  if ((g_I[phase] > 50000) || (g_I[phase] < -50000))
+  {
+    flags |= 0x08U;
   }
   return flags;
 }
