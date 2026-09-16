@@ -66,7 +66,7 @@
 #define BOARD_CAN_RX_PIN                 GPIO_PIN_11
 #define BOARD_CAN_TX_PORT                GPIOA
 #define BOARD_CAN_TX_PIN                 GPIO_PIN_12
-#define BOARD_CAN_PRESCALER              4U
+#define BOARD_CAN_PRESCALER              1U
 #define BOARD_CAN_RX_IRQn                USB_LP_CAN1_RX0_IRQn
 #define BOARD_CAN_SCE_IRQn               CAN1_SCE_IRQn
 

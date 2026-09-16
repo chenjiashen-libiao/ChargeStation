@@ -19,7 +19,7 @@ void ADC_Init(void)
 { // 初始化与参考充电桩一致的ADC1十一通道DMA循环采样
   __HAL_RCC_ADC1_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
-  __HAL_RCC_ADC_CONFIG(RCC_ADCPCLK2_DIV8);
+  __HAL_RCC_ADC_CONFIG(RCC_ADCPCLK2_DIV4);
   ADC_GPIO_Init();
 
   hdmaAdc1.Instance = BOARD_ADC_DMA_INSTANCE;
