@@ -21,6 +21,7 @@ typedef struct
 uint8_t SI4463_Init(void);
 uint8_t SI4463_IsReady(void);
 uint8_t SI4463_GetHomeChannel(void);
+uint8_t SI4463_ReadCurrentChannel(uint8_t *channel);
 const SI4463_Info *SI4463_GetInfo(void);
 uint8_t SI4463_SendPacket(const uint8_t *data, uint8_t length, uint8_t channel);
 uint8_t SI4463_SendVariablePacket(const uint8_t *data, uint8_t length, uint8_t channel);

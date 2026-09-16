@@ -22,7 +22,7 @@ static uint32_t wirelessAddress;
 static uint8_t homeChannel;
 
 static uint8_t WirelessProtocol_AddressMatches(const uint8_t *frame);
-static void WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length);
+static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_ProcessVariable(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_SendHomeStatus(const uint8_t *request);
 static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8_t length);
@@ -58,6 +58,7 @@ void WirelessProtocol_Process(void)
   uint8_t frame[SI4463_VARIABLE_MAX_PAYLOAD];
   uint8_t length;
   uint8_t isVariable;
+  uint8_t receiveStarted = 0U;
 
   if (SI4463_GetReceivedFrame(frame, &length, &isVariable))
   {
@@ -67,9 +68,12 @@ void WirelessProtocol_Process(void)
     }
     else
     {
-      WirelessProtocol_ProcessFixed(frame, length);
+      receiveStarted = WirelessProtocol_ProcessFixed(frame, length);
     }
-    SI4463_EnterReceive();
+    if (!receiveStarted)
+    {
+      SI4463_EnterReceive();
+    }
   }
   if ((currentChannel != homeChannel) && (backHomeDelay != 0U) &&
     ((uint32_t)(HAL_GetTick() - lastValidCommunication) >= backHomeDelay))
@@ -81,6 +85,11 @@ void WirelessProtocol_Process(void)
       backHomeDelay = 0U;
     }
   }
+}
+
+uint8_t WirelessProtocol_IsWorkChannel(void)
+{ // 返回当前是否已切换到工作信道
+  return currentChannel != homeChannel;
 }
 
 uint32_t WirelessProtocol_GetAddress(void)
@@ -150,17 +159,20 @@ static uint8_t WirelessProtocol_AddressMatches(const uint8_t *frame)
     (frame[2] == (uint8_t)(wirelessAddress >> 8));
 }
 
-static void WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length)
+static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length)
 { // 处理Home状态查询和切信道命令
   uint8_t command;
+  uint8_t requestedChannel;
+  uint8_t requestedVariableMode;
+  uint8_t modeChanged;
 
   if (length != SI4463_PACKET_LENGTH)
   {
-    return;
+    return 0U;
   }
   if (!WirelessProtocol_AddressMatches(frame))
   {
-    return;
+    return 0U;
   }
   lastValidCommunication = HAL_GetTick();
   command = frame[0] >> 4;
@@ -168,25 +180,32 @@ static void WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length)
     (frame[4] == WIRELESS_SUBCOMMAND_STATUS))
   {
     WirelessProtocol_SendHomeStatus(frame);
+    return 0U;
   }
   else if ((command == WIRELESS_COMMAND_BMS) &&
     (frame[4] == WIRELESS_SUBCOMMAND_SWITCH))
   {
-    SI4463_SendPacket(frame, length, currentChannel);
-    currentChannel = frame[5];
-    variableMode = frame[8] == 1U;
+    requestedChannel = frame[5];
+    requestedVariableMode = frame[8] == 1U;
+    if (!SI4463_SendPacket(frame, length, currentChannel))
+    {
+      return 0U;
+    }
+    modeChanged = requestedVariableMode ?
+      SI4463_SetVariableMode(requestedChannel) :
+      SI4463_SetFixedMode(requestedChannel);
+    if (!modeChanged)
+    {
+      return SI4463_SetFixedMode(currentChannel);
+    }
+    currentChannel = requestedChannel;
+    variableMode = requestedVariableMode;
     backHomeDelay = (currentChannel == homeChannel) ?
       0U : WIRELESS_WORK_TIMEOUT_MS;
     lastValidCommunication = HAL_GetTick();
-    if (variableMode)
-    {
-      SI4463_SetVariableMode(currentChannel);
-    }
-    else
-    {
-      SI4463_SetFixedMode(currentChannel);
-    }
+    return 1U;
   }
+  return 0U;
 }
 
 static void WirelessProtocol_ProcessVariable(const uint8_t *frame, uint8_t length)

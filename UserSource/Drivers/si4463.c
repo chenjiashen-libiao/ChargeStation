@@ -125,6 +125,21 @@ uint8_t SI4463_GetHomeChannel(void)
   return homeChannel;
 }
 
+uint8_t SI4463_ReadCurrentChannel(uint8_t *channel)
+{ // 读取SI4463硬件当前信道
+  uint8_t command = REQUEST_DEVICE_STATE;
+  uint8_t response[3];
+
+  if ((channel == NULL) ||
+    !SI4463_Command(&command, 1U) ||
+    !SI4463_ReadResponse(response, sizeof(response)))
+  {
+    return 0U;
+  }
+  *channel = response[2];
+  return 1U;
+}
+
 const SI4463_Info *SI4463_GetInfo(void)
 { // 返回芯片识别信息
   return &si4463Info;
@@ -204,6 +219,7 @@ uint8_t SI4463_GetReceivedFrame(uint8_t *data, uint8_t *length, uint8_t *isVaria
 uint8_t SI4463_SetFixedMode(uint8_t channel)
 { // 配置固定16字节模式并进入指定信道接收
   uint8_t status[9];
+  uint8_t hardwareChannel;
 
   if (!SI4463_ChangeState(3U) || !SI4463_ReadInterruptStatus(status) ||
     !SI4463_ResetRxFifo() ||
@@ -222,12 +238,15 @@ uint8_t SI4463_SetFixedMode(uint8_t channel)
   }
   currentChannel = channel;
   variableMode = 0U;
-  return SI4463_StartReceive();
+  return SI4463_StartReceive() &&
+    SI4463_ReadCurrentChannel(&hardwareChannel) &&
+    (hardwareChannel == channel);
 }
 
 uint8_t SI4463_SetVariableMode(uint8_t channel)
 { // 配置V5双FIELD变长模式并进入指定信道接收
   uint8_t status[9];
+  uint8_t hardwareChannel;
 
   if (!SI4463_ChangeState(3U) || !SI4463_ReadInterruptStatus(status) ||
     !SI4463_ResetRxFifo() ||
@@ -246,7 +265,9 @@ uint8_t SI4463_SetVariableMode(uint8_t channel)
   }
   currentChannel = channel;
   variableMode = 1U;
-  return SI4463_StartReceive();
+  return SI4463_StartReceive() &&
+    SI4463_ReadCurrentChannel(&hardwareChannel) &&
+    (hardwareChannel == channel);
 }
 
 uint8_t SI4463_EnterReceive(void)

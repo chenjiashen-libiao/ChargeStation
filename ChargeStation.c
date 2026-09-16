@@ -154,7 +154,8 @@ static void LED_Thread(void const *argument)
 	for (;;)
 	{
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_9);
-    osDelay(wirelessInitFailed ? 100U : 500U);
+  osDelay(wirelessInitFailed ? 100U :
+    (WirelessProtocol_IsWorkChannel() ? 300U : 500U));
 	}
 }
 
