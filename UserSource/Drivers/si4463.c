@@ -75,7 +75,6 @@ uint8_t SI4463_Init(void)
   txPower = 0x7F;
   frequencyBase = 0;
   frequencyStep = 250;
-#if !BOARD_RF_TEST_FIXED_CONFIG
   if (*(const uint32_t *)BOARD_RF_HOME_CHANNEL_STORAGE != 0xFFFFFFFF)
   {
     homeChannel = *(const uint8_t *)BOARD_RF_HOME_CHANNEL_STORAGE;
@@ -92,7 +91,6 @@ uint8_t SI4463_Init(void)
   {
     txPower = *(const uint8_t *)BOARD_RF_TX_POWER_STORAGE;
   }
-#endif
   SI4463_InitIo();
   osDelay(5);
   if (!SI4463_ReadPartInfo() ||

@@ -6,7 +6,6 @@
 /* 功能开关：1=启用，0=禁用 */
 #define BOARD_SPI_ENABLE                 0
 #define BOARD_UART_ENABLE                0
-#define BOARD_RF_TEST_FIXED_CONFIG       1
 
 /* 程序信息：固定写入Flash的0x08004000起始位置 */
 #define BOARD_VERSION                     0x0001
@@ -28,7 +27,6 @@
 /* 无线地址和射频参数存储 */
 #define BOARD_WIRELESS_ADDRESS_STORAGE     0x08011C00
 #define BOARD_WIRELESS_ADDRESS_DEFAULT     0x0000EEEE
-#define BOARD_WIRELESS_ADDRESS_TEST        0x0000567D
 #define BOARD_RF_HOME_CHANNEL_STORAGE      0x08011C04
 #define BOARD_RF_FREQUENCY_STORAGE         0x08011C08
 #define BOARD_RF_FREQUENCY_STEP_STORAGE    0x08011C0C

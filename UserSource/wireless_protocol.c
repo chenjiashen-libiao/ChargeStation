@@ -42,15 +42,11 @@ static int16_t WirelessProtocol_Current10mA(int32_t value);
 
 void WirelessProtocol_Init(void)
 { // 初始化无线协议状态
-#if BOARD_RF_TEST_FIXED_CONFIG
-  wirelessAddress = BOARD_WIRELESS_ADDRESS_TEST;
-#else
   wirelessAddress = *(const uint32_t *)BOARD_WIRELESS_ADDRESS_STORAGE;
   if (wirelessAddress == 0xFFFFFFFF)
   {
     wirelessAddress = BOARD_WIRELESS_ADDRESS_DEFAULT;
   }
-#endif
   homeChannel = SI4463_GetHomeChannel();
   currentChannel = homeChannel;
   variableMode = 0;

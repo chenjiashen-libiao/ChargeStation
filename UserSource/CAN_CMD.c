@@ -11,6 +11,8 @@
 /* 充电桩CAN业务命令ID */
 #define CAN_ID_SN_SEND                 0x312  // 上报设备序列号
 #define CAN_ID_SN_BIND                 0x313  // 绑定设备编号
+#define CAN_ID_CHANNEL_REQUEST         0x403  // 请求设备通道信息
+#define CAN_ID_CHANNEL_SEND            0x404  // 上报设备通道信息
 #define CAN_ID_UID_GET                 0x601  // 请求芯片UID
 #define CAN_ID_UID_SEND                0x602  // 上报芯片UID
 #define CAN_ID_IAP_ENTER               0x603  // 复位进入Boot升级流程
@@ -26,6 +28,7 @@ static uint8_t deviceNumber = 0xFF;
 
 static void CAN_CMD_HandleFrame(uint32_t id, uint8_t length, const uint8_t *data);
 static void CAN_CMD_SendUID(void);
+static void CAN_CMD_SendWirelessAddress(void);
 
 void CAN_CMD_Process(void)
 { // 清空CAN接收队列并逐帧分发业务命令
@@ -49,6 +52,13 @@ static void CAN_CMD_HandleFrame(uint32_t id, uint8_t length, const uint8_t *data
 
   switch (id)
   {
+    case CAN_ID_CHANNEL_REQUEST:
+      if ((length >= 2) && (data[0] == deviceNumber) && (data[1] == 0))
+      {
+        CAN_CMD_SendWirelessAddress();
+      }
+      break;
+
     case CAN_ID_IAP_ENTER:
       if ((length >= 1) && (data[0] == deviceNumber))
       {
@@ -152,6 +162,20 @@ static void CAN_CMD_SendUID(void)
   memcpy(data, hardwareUID + 8, 4);
   data[7] = (uint8_t)BOARD_DEVICE_TYPE;
   CAN_SendDataId(CAN_ID_UID_SEND, data, sizeof(data));
+}
+
+static void CAN_CMD_SendWirelessAddress(void)
+{ // 按BMSP通道0格式上报设备号和当前无线桩号
+  uint32_t wirelessAddress = WirelessProtocol_GetAddress();
+  uint8_t data[8] = {0};
+
+  data[0] = deviceNumber;
+  data[1] = 0;
+  data[2] = (uint8_t)wirelessAddress;
+  data[3] = (uint8_t)(wirelessAddress >> 8);
+  data[4] = (uint8_t)(wirelessAddress >> 16);
+  data[5] = (uint8_t)(wirelessAddress >> 24);
+  CAN_SendDataId(CAN_ID_CHANNEL_SEND, data, sizeof(data));
 }
 
 void CAN_CMD_SendSN(void)
