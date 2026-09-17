@@ -7,7 +7,7 @@ UART_HandleTypeDef huart;
 static void UART_GPIO_Init(void);
 
 void UART_Init(void)
-{
+{ // 初始化可选的USART1接口
   UART_GPIO_Init();
   BOARD_UART_CLK_ENABLE();
 
@@ -29,17 +29,17 @@ void UART_Init(void)
 }
 
 HAL_StatusTypeDef UART_Send(const uint8_t *data, uint16_t length, uint32_t timeout)
-{
+{ // 在指定超时时间内阻塞发送数据
   return HAL_UART_Transmit(&huart, (uint8_t *)data, length, timeout);
 }
 
 HAL_StatusTypeDef UART_Receive(uint8_t *data, uint16_t length, uint32_t timeout)
-{
+{ // 在指定超时时间内阻塞接收数据
   return HAL_UART_Receive(&huart, data, length, timeout);
 }
 
 static void UART_GPIO_Init(void)
-{
+{ // 配置USART重映射及收发引脚
   GPIO_InitTypeDef gpio_init = {0};
 
   BOARD_UART_GPIO_CLK_ENABLE();

@@ -3,10 +3,11 @@
 
 #include <stdint.h>
 
-#define CHARGE_PWM_PERIOD             719U
-#define CHARGE_PWM_INITIAL_COMPARE    550U
-#define CHARGE_PWM_MIN_COMPARE        50U
-#define CHARGE_PWM_MAX_COMPARE        718U
+/* TIM1中心对齐PWM参数，32MHz时钟下频率约22.22kHz */
+#define CHARGE_PWM_PERIOD              719  // 自动重装值
+#define CHARGE_PWM_INITIAL_COMPARE     550  // 初始化比较值
+#define CHARGE_PWM_MIN_COMPARE         50   // 控制环最小比较值
+#define CHARGE_PWM_MAX_COMPARE         718  // 控制环最大比较值
 
 void ChargePWM_Init(void);
 void ChargePWM_EnableMain(void);

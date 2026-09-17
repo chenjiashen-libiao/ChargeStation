@@ -29,9 +29,6 @@
 #include <stm32f1xx_hal.h>
 #include <../CMSIS_RTOS/cmsis_os.h>
 #include "board_config.h"
-#if BOARD_SPI_ENABLE
-#include "UserSource/Drivers/SPI.h"
-#endif
 #include "UserSource/Drivers/can.h"
 #include "UserSource/Drivers/adc.h"
 #include "UserSource/Drivers/si4463.h"
@@ -39,9 +36,6 @@
 #include "UserSource/charge_control.h"
 #include "UserSource/registration.h"
 #include "UserSource/wireless_protocol.h"
-#if BOARD_UART_ENABLE
-#include "UserSource/Drivers/uart.h"
-#endif
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -66,7 +60,7 @@ static void Error_Handler(void);
   * @retval None
   */
 int main(void)
-{
+{ // 初始化系统、外设和任务后启动RTOS
   __enable_irq();
   HAL_Init();
   if (HAL_RCC_DeInit() != HAL_OK)
@@ -75,18 +69,11 @@ int main(void)
   }
   SystemClock_Config();
 
+  // 注册信息决定设备合法状态；充电控制先建立安全输出，再启动ADC采样
   Registration_Load();
   CAN_Init();
   ChargeControl_Init();
   ADC_Init();
-
-#if BOARD_SPI_ENABLE
-  SPI_Init();
-#endif
-
-#if BOARD_UART_ENABLE
-  UART_Init();
-#endif
 
 	__GPIOB_CLK_ENABLE();
 	GPIO_InitTypeDef GPIO_InitStructure;
@@ -98,10 +85,12 @@ int main(void)
 	GPIO_InitStructure.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStructure);
 
+  // LED显示状态，CAN处理配置，无线处理收发，Charge执行功率控制
   osThreadDef(LED, LED_Thread, osPriorityNormal, 0, 48);
   osThreadDef(CAN_Rx, CAN_Rx_Thread, osPriorityNormal, 0, 768);
   osThreadDef(SI4463, SI4463_Thread, osPriorityRealtime, 0, 416);
   osThreadDef(Charge, ChargeControl_Task, osPriorityNormal, 0, 128);
+
   if ((osThreadCreate(osThread(LED), NULL) == NULL) ||
     (osThreadCreate(osThread(CAN_Rx), NULL) == NULL) ||
     (osThreadCreate(osThread(SI4463), NULL) == NULL) ||
@@ -118,7 +107,7 @@ int main(void)
 }
 
 static void SystemClock_Config(void)
-{
+{ // 使用外部8MHz晶振配置32MHz系统时钟
   RCC_OscInitTypeDef RCC_OscInitStructure = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStructure = {0};
 
@@ -146,25 +135,25 @@ static void SystemClock_Config(void)
 }
 
 void SysTick_Handler(void)
-{
+{ // 维护HAL时基并驱动CMSIS-RTOS系统节拍
 	HAL_IncTick();
 	osSystickHandler();
 }
 
 static void LED_Thread(void const *argument)
-{
+{ // 根据无线初始化和工作信道状态闪烁状态灯
 	(void) argument;
 
 	for (;;)
 	{
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_9);
-  osDelay(wirelessInitFailed ? 100U :
-    (WirelessProtocol_IsWorkChannel() ? 300U : 500U));
+  osDelay(wirelessInitFailed ? 100 :
+    (WirelessProtocol_IsWorkChannel() ? 300 : 500));
 	}
 }
 
 static void CAN_Rx_Thread(void const *argument)
-{
+{ // 周期处理注册、升级和无线配置命令
   (void) argument;
   osDelay(20);
   CAN_CMD_SendSN();
@@ -180,9 +169,10 @@ static void SI4463_Thread(void const *argument)
 { // 初始化无线模块并持续处理固定长收发事件
   (void) argument;
 
+  // 无线初始化失败不阻止其他任务运行，由LED快速闪烁提示故障
   if (!SI4463_Init())
   {
-    wirelessInitFailed = 1U;
+    wirelessInitFailed = 1;
   }
   WirelessProtocol_Init();
   for (;;)
@@ -194,7 +184,7 @@ static void SI4463_Thread(void const *argument)
 }
 
 static void Error_Handler(void)
-{
+{ // 关闭中断并停机，保留故障现场
   __disable_irq();
   while (1)
 	{
@@ -210,7 +200,7 @@ static void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t* file, uint32_t line)
-{
+{ // 完整断言模式下停机，保留错误文件和行号参数
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
 

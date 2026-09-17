@@ -5,19 +5,22 @@
 #include <../CMSIS_RTOS/cmsis_os.h>
 #include <string.h>
 
-#define SI4463_CTS_ATTEMPTS               20U
-#define SI4463_TX_COMPLETE_ATTEMPTS       20U
-#define SI4463_PACKET_RX_PENDING          0x10U
-#define SI4463_PACKET_CRC_ERROR           0x08U
-#define SI4463_PACKET_TX_COMPLETE         0x20U
-#define SI4463_VARIABLE_CRC_SIZE          3U
-#define SI4463_VARIABLE_MAX_FIELD2        63U
-#define SI4463_VARIABLE_MIN_PAYLOAD       3U
-#define SI4463_VARIABLE_MIN_FIELD2        6U
-#define SI4463_MOSI_CONFIG_SHIFT          20U
-#define SI4463_MOSI_CONFIG_MASK           (0x0FU << SI4463_MOSI_CONFIG_SHIFT)
-#define SI4463_MOSI_OUTPUT_CONFIG         (0x03U << SI4463_MOSI_CONFIG_SHIFT)
-#define SI4463_MOSI_INPUT_CONFIG          (0x08U << SI4463_MOSI_CONFIG_SHIFT)
+/* SI4463命令等待及包处理中断标志 */
+#define SI4463_WAIT_ATTEMPTS            20    // CTS和发送完成最多轮询20次
+#define SI4463_PACKET_RX_PENDING        0x10  // 收到完整数据包
+#define SI4463_PACKET_CRC_ERROR         0x08  // 射频包CRC错误
+#define SI4463_PACKET_TX_COMPLETE       0x20  // 数据包发送完成
+
+/* 变长帧FIELD2由3字节CRC和业务负载组成 */
+#define SI4463_VARIABLE_CRC_SIZE        3   // 仅发送CRC32低24位
+#define SI4463_VARIABLE_MAX_FIELD2      63  // SI4463接收FIELD2上限
+#define SI4463_VARIABLE_MIN_PAYLOAD     3   // 最短有效业务负载
+
+/* STM32F1 GPIOB CRL中PB5的4位配置字段 */
+#define SI4463_MOSI_CONFIG_SHIFT        20
+#define SI4463_MOSI_CONFIG_MASK         (0x0F << SI4463_MOSI_CONFIG_SHIFT)
+#define SI4463_MOSI_OUTPUT_CONFIG       (0x03 << SI4463_MOSI_CONFIG_SHIFT)  // 推挽输出50MHz
+#define SI4463_MOSI_INPUT_CONFIG        (0x08 << SI4463_MOSI_CONFIG_SHIFT)  // 上拉/下拉输入
 
 static const uint8_t configTable[] = RADIO_CONFIGURATION_DATA_ARRAY;
 static const uint8_t config902Table[] = RADIO902_CONFIGURATION_DATA_ARRAY;
@@ -64,28 +67,28 @@ static uint32_t SI4463_ComputeCrc(const uint8_t *data, uint16_t length);
 static uint8_t SI4463_TakeInterrupt(void);
 
 uint8_t SI4463_Init(void)
-{ // 按参考工程顺序初始化SI4463并进入Home信道固定长接收
+{ // 初始化SI4463并进入Home信道固定长接收
   uint8_t status[9];
 
   memset(&si4463Info, 0, sizeof(si4463Info));
-  homeChannel = SI4463_HOME_CHANNEL;
-  txPower = SI4463_TX_POWER;
-  frequencyBase = SI4463_FREQUENCY_BASE_MHZ;
-  frequencyStep = SI4463_FREQUENCY_STEP_KHZ;
+  homeChannel = 0;
+  txPower = 0x7F;
+  frequencyBase = 0;
+  frequencyStep = 250;
 #if !BOARD_RF_TEST_FIXED_CONFIG
-  if (*(const uint32_t *)BOARD_RF_HOME_CHANNEL_STORAGE != 0xFFFFFFFFU)
+  if (*(const uint32_t *)BOARD_RF_HOME_CHANNEL_STORAGE != 0xFFFFFFFF)
   {
     homeChannel = *(const uint8_t *)BOARD_RF_HOME_CHANNEL_STORAGE;
   }
-  if (*(const uint32_t *)BOARD_RF_FREQUENCY_STORAGE != 0xFFFFFFFFU)
+  if (*(const uint32_t *)BOARD_RF_FREQUENCY_STORAGE != 0xFFFFFFFF)
   {
     frequencyBase = *(const uint16_t *)BOARD_RF_FREQUENCY_STORAGE;
   }
-  if (*(const uint32_t *)BOARD_RF_FREQUENCY_STEP_STORAGE != 0xFFFFFFFFU)
+  if (*(const uint32_t *)BOARD_RF_FREQUENCY_STEP_STORAGE != 0xFFFFFFFF)
   {
     frequencyStep = *(const uint16_t *)BOARD_RF_FREQUENCY_STEP_STORAGE;
   }
-  if (*(const uint32_t *)BOARD_RF_TX_POWER_STORAGE != 0xFFFFFFFFU)
+  if (*(const uint32_t *)BOARD_RF_TX_POWER_STORAGE != 0xFFFFFFFF)
   {
     txPower = *(const uint8_t *)BOARD_RF_TX_POWER_STORAGE;
   }
@@ -93,31 +96,31 @@ uint8_t SI4463_Init(void)
   SI4463_InitIo();
   osDelay(5);
   if (!SI4463_ReadPartInfo() ||
-    ((si4463Info.PartNumber & 0xFFF0U) != 0x4460U) ||
+    ((si4463Info.PartNumber & 0xFFF0) != 0x4460) ||
     !SI4463_LoadConfig(configTable))
   {
-    return 0U;
+    return 0;
   }
-  if ((frequencyBase > 849U) ||
-    ((frequencyBase == 0U) && (si4463Info.RomId == 0x06U)))
+  if ((frequencyBase > 849) ||
+    ((frequencyBase == 0) && (si4463Info.RomId == 0x06)))
   {
     if (!SI4463_LoadConfig(config902Table))
     {
-      return 0U;
+      return 0;
     }
   }
-  if ((frequencyBase != 0U) && !SI4463_SetFrequency())
+  if ((frequencyBase != 0) && !SI4463_SetFrequency())
   {
-    return 0U;
+    return 0;
   }
   if (!SI4463_ConfigGpio() || !SI4463_SetTxPower() ||
     !SI4463_ReadInterruptStatus(status) ||
     !SI4463_SetFixedMode(homeChannel))
   {
-    return 0U;
+    return 0;
   }
-  si4463Info.Ready = 1U;
-  return 1U;
+  si4463Info.Ready = 1;
+  return 1;
 }
 
 uint8_t SI4463_IsReady(void)
@@ -136,13 +139,13 @@ uint8_t SI4463_ReadCurrentChannel(uint8_t *channel)
   uint8_t response[3];
 
   if ((channel == NULL) ||
-    !SI4463_Command(&command, 1U) ||
+    !SI4463_Command(&command, 1) ||
     !SI4463_ReadResponse(response, sizeof(response)))
   {
-    return 0U;
+    return 0;
   }
   *channel = response[2];
-  return 1U;
+  return 1;
 }
 
 const SI4463_Info *SI4463_GetInfo(void)
@@ -154,14 +157,14 @@ uint8_t SI4463_SendPacket(const uint8_t *data, uint8_t length, uint8_t channel)
 { // 发送固定长度无线数据并恢复接收
   if (!si4463Info.Ready || (data == NULL) || (length != SI4463_PACKET_LENGTH))
   {
-    return 0U;
+    return 0;
   }
-  return SI4463_Transmit(data, length, channel, 0U);
+  return SI4463_Transmit(data, length, channel, 0);
 }
 
 uint8_t SI4463_SendVariablePacket(const uint8_t *data, uint8_t length, uint8_t channel)
 { // 发送长度字节、CRC32低24位和有效数据
-  uint8_t fifo[SI4463_VARIABLE_MAX_FIELD2 + 1U];
+  uint8_t fifo[SI4463_VARIABLE_MAX_FIELD2 + 1];
   uint8_t field2Length;
   uint8_t index;
   uint32_t crc;
@@ -171,7 +174,7 @@ uint8_t SI4463_SendVariablePacket(const uint8_t *data, uint8_t length, uint8_t c
     (length < SI4463_VARIABLE_MIN_PAYLOAD) ||
     (length > SI4463_VARIABLE_MAX_PAYLOAD))
   {
-    return 0U;
+    return 0;
   }
   crc = SI4463_ComputeCrc(data, length);
   field2Length = length + SI4463_VARIABLE_CRC_SIZE;
@@ -179,15 +182,15 @@ uint8_t SI4463_SendVariablePacket(const uint8_t *data, uint8_t length, uint8_t c
   fifo[1] = (uint8_t)crc;
   fifo[2] = (uint8_t)(crc >> 8);
   fifo[3] = (uint8_t)(crc >> 16);
-  for (index = 0U; index < length; index++)
+  for (index = 0; index < length; index++)
   {
-    fifo[index + 4U] = data[index];
+    fifo[index + 4] = data[index];
   }
   if (!SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, field2Length))
   {
-    return 0U;
+    return 0;
   }
-  result = SI4463_Transmit(fifo, field2Length + 1U, channel, 0x60U);
+  result = SI4463_Transmit(fifo, field2Length + 1, channel, 0x60);
   SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, SI4463_VARIABLE_MAX_FIELD2);
   return result;
 }
@@ -198,27 +201,27 @@ uint8_t SI4463_GetReceivedFrame(uint8_t *data, uint8_t *length, uint8_t *isVaria
 
   if ((data == NULL) || (length == NULL) || (isVariable == NULL))
   {
-    return 0U;
+    return 0;
   }
   interruptState = __get_PRIMASK();
   __disable_irq();
   if (!receivedFramePending)
   {
-    if (interruptState == 0U)
+    if (interruptState == 0)
     {
       __enable_irq();
     }
-    return 0U;
+    return 0;
   }
   memcpy(data, receivedFrame, receivedFrameLength);
   *length = receivedFrameLength;
   *isVariable = receivedFrameVariable;
-  receivedFramePending = 0U;
-  if (interruptState == 0U)
+  receivedFramePending = 0;
+  if (interruptState == 0)
   {
     __enable_irq();
   }
-  return 1U;
+  return 1;
 }
 
 uint8_t SI4463_SetFixedMode(uint8_t channel)
@@ -226,23 +229,23 @@ uint8_t SI4463_SetFixedMode(uint8_t channel)
   uint8_t status[9];
   uint8_t hardwareChannel;
 
-  if (!SI4463_ChangeState(3U) || !SI4463_ReadInterruptStatus(status) ||
+  if (!SI4463_ChangeState(3) || !SI4463_ReadInterruptStatus(status) ||
     !SI4463_ResetRxFifo() ||
-    !SI4463_SetProperty(PKT_CRC_CONFIG, 0x84U) ||
-    !SI4463_SetProperty(PKT_LEN, 0x00U) ||
-    !SI4463_SetProperty(PKT_LEN_FIELD_SOURCE, 0x00U) ||
-    !SI4463_SetProperty(PKT_LEN_ADJUST, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_12_8, 0x00U) ||
+    !SI4463_SetProperty(PKT_CRC_CONFIG, 0x84) ||
+    !SI4463_SetProperty(PKT_LEN, 0x00) ||
+    !SI4463_SetProperty(PKT_LEN_FIELD_SOURCE, 0x00) ||
+    !SI4463_SetProperty(PKT_LEN_ADJUST, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_12_8, 0x00) ||
     !SI4463_SetProperty(PKT_FIELD_1_LENGTH_7_0, SI4463_PACKET_LENGTH) ||
-    !SI4463_SetProperty(PKT_FIELD_1_CRC_CONFIG, 0xAAU) ||
-    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_12_8, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_2_CRC_CONFIG, 0x00U))
+    !SI4463_SetProperty(PKT_FIELD_1_CRC_CONFIG, 0xAA) ||
+    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_12_8, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_2_CRC_CONFIG, 0x00))
   {
-    return 0U;
+    return 0;
   }
   currentChannel = channel;
-  variableMode = 0U;
+  variableMode = 0;
   return SI4463_StartReceive() &&
     SI4463_ReadCurrentChannel(&hardwareChannel) &&
     (hardwareChannel == channel);
@@ -253,23 +256,23 @@ uint8_t SI4463_SetVariableMode(uint8_t channel)
   uint8_t status[9];
   uint8_t hardwareChannel;
 
-  if (!SI4463_ChangeState(3U) || !SI4463_ReadInterruptStatus(status) ||
+  if (!SI4463_ChangeState(3) || !SI4463_ReadInterruptStatus(status) ||
     !SI4463_ResetRxFifo() ||
-    !SI4463_SetProperty(PKT_CRC_CONFIG, 0x84U) ||
-    !SI4463_SetProperty(PKT_LEN, 0x2AU) ||
-    !SI4463_SetProperty(PKT_LEN_FIELD_SOURCE, 0x01U) ||
-    !SI4463_SetProperty(PKT_LEN_ADJUST, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_12_8, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_7_0, 0x01U) ||
-    !SI4463_SetProperty(PKT_FIELD_1_CRC_CONFIG, 0x00U) ||
-    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_12_8, 0x00U) ||
+    !SI4463_SetProperty(PKT_CRC_CONFIG, 0x84) ||
+    !SI4463_SetProperty(PKT_LEN, 0x2A) ||
+    !SI4463_SetProperty(PKT_LEN_FIELD_SOURCE, 0x01) ||
+    !SI4463_SetProperty(PKT_LEN_ADJUST, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_12_8, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_1_LENGTH_7_0, 0x01) ||
+    !SI4463_SetProperty(PKT_FIELD_1_CRC_CONFIG, 0x00) ||
+    !SI4463_SetProperty(PKT_FIELD_2_LENGTH_12_8, 0x00) ||
     !SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, SI4463_VARIABLE_MAX_FIELD2) ||
-    !SI4463_SetProperty(PKT_FIELD_2_CRC_CONFIG, 0x00U))
+    !SI4463_SetProperty(PKT_FIELD_2_CRC_CONFIG, 0x00))
   {
-    return 0U;
+    return 0;
   }
   currentChannel = channel;
-  variableMode = 1U;
+  variableMode = 1;
   return SI4463_StartReceive() &&
     SI4463_ReadCurrentChannel(&hardwareChannel) &&
     (hardwareChannel == channel);
@@ -279,7 +282,7 @@ uint8_t SI4463_EnterReceive(void)
 { // 按当前协议模式恢复接收
   if (!si4463Info.Ready)
   {
-    return 0U;
+    return 0;
   }
   return SI4463_StartReceive();
 }
@@ -288,12 +291,13 @@ void SI4463_Process(void)
 { // 处理无线中断并保持Home信道接收
   uint8_t status[9];
   uint8_t pending;
-  uint8_t frameReceived = 0U;
+  uint8_t frameReceived = 0;
 
   if (!si4463Info.Ready)
   {
     return;
   }
+  // NIRQ可能由EXTI记录，也可能在PB5恢复输入后重新采样，两条路径共同避免漏报
   pending = SI4463_TakeInterrupt();
   if (!pending)
   {
@@ -308,25 +312,25 @@ void SI4463_Process(void)
     SI4463_StartReceive();
     return;
   }
-  if (((status[3] & SI4463_PACKET_RX_PENDING) != 0U) &&
-    ((status[3] & SI4463_PACKET_CRC_ERROR) == 0U))
+  if (((status[3] & SI4463_PACKET_RX_PENDING) != 0) &&
+    ((status[3] & SI4463_PACKET_CRC_ERROR) == 0))
   {
     if (variableMode)
     {
       if (SI4463_ReadVariablePacket(receivedFrame, &receivedFrameLength))
       {
-        receivedFrameVariable = 1U;
-        receivedFramePending = 1U;
-        frameReceived = 1U;
+        receivedFrameVariable = 1;
+        receivedFramePending = 1;
+        frameReceived = 1;
       }
     }
     else if (SI4463_ReadFixedPacket(receivedFrame))
     {
-      SI4463_ChangeState(5U);
+      SI4463_ChangeState(5);
       receivedFrameLength = SI4463_PACKET_LENGTH;
-      receivedFrameVariable = 0U;
-      receivedFramePending = 1U;
-      frameReceived = 1U;
+      receivedFrameVariable = 0;
+      receivedFramePending = 1;
+      frameReceived = 1;
     }
   }
   if (!frameReceived)
@@ -364,6 +368,7 @@ static void SI4463_InitIo(void)
 
 static void SI4463_SetMosiMode(void)
 { // SPI事务期间将PB5切换为MOSI输出
+  // PB5复用为MOSI和低有效NIRQ，切换输出前必须屏蔽并清除对应EXTI
   HAL_NVIC_DisableIRQ(BOARD_SI4463_IRQN);
   EXTI->IMR &= ~BOARD_SI4463_MOSI_IRQ_PIN;
   __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
@@ -376,14 +381,15 @@ static void SI4463_SetIrqMode(void)
 { // SPI空闲期间将PB5恢复为低有效NIRQ
   uint8_t wasPending = (__HAL_GPIO_EXTI_GET_IT(BOARD_SI4463_MOSI_IRQ_PIN) != RESET);
 
+  // 恢复输入后重新检查引脚电平，补记SPI事务期间到达的无线事件
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_MOSI_IRQ_PIN;
   MODIFY_REG(BOARD_SI4463_GPIO_PORT->CRL, SI4463_MOSI_CONFIG_MASK,
     SI4463_MOSI_INPUT_CONFIG);
   __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
   if (wasPending ||
-    ((BOARD_SI4463_GPIO_PORT->IDR & BOARD_SI4463_MOSI_IRQ_PIN) == 0U))
+    ((BOARD_SI4463_GPIO_PORT->IDR & BOARD_SI4463_MOSI_IRQ_PIN) == 0))
   {
-    interruptPending = 1U;
+    interruptPending = 1;
   }
   EXTI->IMR |= BOARD_SI4463_MOSI_IRQ_PIN;
   HAL_NVIC_EnableIRQ(BOARD_SI4463_IRQN);
@@ -391,6 +397,7 @@ static void SI4463_SetIrqMode(void)
 
 static void SI4463_Select(void)
 { // 开始模拟SPI事务
+  // 单笔CS事务内禁止ADC等中断插入，保证GPIO模拟SPI时钟连续
   spiInterruptState = __get_PRIMASK();
   __disable_irq();
   SI4463_SetMosiMode();
@@ -401,7 +408,8 @@ static void SI4463_Deselect(void)
 { // 结束模拟SPI事务并恢复NIRQ
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_CSN_PIN;
   SI4463_SetIrqMode();
-  if (spiInterruptState == 0U)
+  // 仅恢复进入事务前处于开启状态的全局中断
+  if (spiInterruptState == 0)
   {
     __enable_irq();
   }
@@ -410,13 +418,13 @@ static void SI4463_Deselect(void)
 static uint8_t SI4463_ExchangeByte(uint8_t txData)
 { // 模拟SPI收发一个字节，CPOL=0、CPHA=1、MSB先行
   uint8_t bit;
-  uint8_t rxData = 0U;
+  uint8_t rxData = 0;
   GPIO_TypeDef *gpio = BOARD_SI4463_GPIO_PORT;
 
   gpio->BRR = BOARD_SI4463_SCK_PIN;
-  for (bit = 0U; bit < 8U; bit++)
+  for (bit = 0; bit < 8; bit++)
   {
-    if ((txData & 0x80U) != 0U)
+    if ((txData & 0x80) != 0)
     {
       gpio->BSRR = BOARD_SI4463_MOSI_IRQ_PIN;
     }
@@ -426,9 +434,9 @@ static uint8_t SI4463_ExchangeByte(uint8_t txData)
     }
     gpio->BSRR = BOARD_SI4463_SCK_PIN;
     rxData <<= 1;
-    if ((gpio->IDR & BOARD_SI4463_MISO_PIN) != 0U)
+    if ((gpio->IDR & BOARD_SI4463_MISO_PIN) != 0)
     {
-      rxData |= 1U;
+      rxData |= 1;
     }
     gpio->BRR = BOARD_SI4463_SCK_PIN;
     txData <<= 1;
@@ -441,19 +449,19 @@ static uint8_t SI4463_WaitCts(void)
   uint8_t attempt;
   uint8_t cts;
 
-  for (attempt = 0U; attempt < SI4463_CTS_ATTEMPTS; attempt++)
+  for (attempt = 0; attempt < SI4463_WAIT_ATTEMPTS; attempt++)
   {
     SI4463_Select();
     SI4463_ExchangeByte(READ_CMD_BUFF);
-    cts = SI4463_ExchangeByte(0xFFU);
+    cts = SI4463_ExchangeByte(0xFF);
     SI4463_Deselect();
-    if (cts == 0xFFU)
+    if (cts == 0xFF)
     {
-      return 1U;
+      return 1;
     }
     osDelay(1);
   }
-  return 0U;
+  return 0;
 }
 
 static uint8_t SI4463_Command(const uint8_t *command, uint8_t commandSize)
@@ -462,15 +470,15 @@ static uint8_t SI4463_Command(const uint8_t *command, uint8_t commandSize)
 
   if (!SI4463_WaitCts())
   {
-    return 0U;
+    return 0;
   }
   SI4463_Select();
-  for (index = 0U; index < commandSize; index++)
+  for (index = 0; index < commandSize; index++)
   {
     SI4463_ExchangeByte(command[index]);
   }
   SI4463_Deselect();
-  return 1U;
+  return 1;
 }
 
 static uint8_t SI4463_ReadResponse(uint8_t *buffer, uint8_t size)
@@ -479,16 +487,16 @@ static uint8_t SI4463_ReadResponse(uint8_t *buffer, uint8_t size)
 
   if (!SI4463_WaitCts())
   {
-    return 0U;
+    return 0;
   }
   SI4463_Select();
   SI4463_ExchangeByte(READ_CMD_BUFF);
-  for (index = 0U; index < size; index++)
+  for (index = 0; index < size; index++)
   {
-    buffer[index] = SI4463_ExchangeByte(0xFFU);
+    buffer[index] = SI4463_ExchangeByte(0xFF);
   }
   SI4463_Deselect();
-  return 1U;
+  return 1;
 }
 
 static uint8_t SI4463_ReadPartInfo(void)
@@ -496,31 +504,31 @@ static uint8_t SI4463_ReadPartInfo(void)
   uint8_t command = PART_INFO;
   uint8_t response[9];
 
-  if (!SI4463_Command(&command, 1U) || !SI4463_ReadResponse(response, sizeof(response)))
+  if (!SI4463_Command(&command, 1) || !SI4463_ReadResponse(response, sizeof(response)))
   {
-    return 0U;
+    return 0;
   }
   si4463Info.ChipRevision = response[1];
   si4463Info.PartNumber = ((uint16_t)response[2] << 8) | response[3];
   si4463Info.RomId = response[8];
-  return 1U;
+  return 1;
 }
 
 static uint8_t SI4463_LoadConfig(const uint8_t *table)
 { // 逐条下发WDS生成的配置表
-  uint16_t offset = 0U;
+  uint16_t offset = 0;
   uint8_t length;
 
-  while ((length = table[offset]) != 0U)
+  while ((length = table[offset]) != 0)
   {
     offset++;
     if (!SI4463_Command(table + offset, length))
     {
-      return 0U;
+      return 0;
     }
     offset += length;
   }
-  return 1U;
+  return 1;
 }
 
 static uint8_t SI4463_SetProperty(uint16_t property, uint8_t value)
@@ -529,7 +537,7 @@ static uint8_t SI4463_SetProperty(uint16_t property, uint8_t value)
 
   command[0] = SET_PROPERTY;
   command[1] = (uint8_t)(property >> 8);
-  command[2] = 1U;
+  command[2] = 1;
   command[3] = (uint8_t)property;
   command[4] = value;
   return SI4463_Command(command, sizeof(command));
@@ -537,7 +545,7 @@ static uint8_t SI4463_SetProperty(uint16_t property, uint8_t value)
 
 static uint8_t SI4463_ConfigGpio(void)
 { // 配置模块GPIO2和GPIO3控制射频收发开关
-  uint8_t command[8] = {GPIO_PIN_CFG, 0U, 0U, 0x20U, 0x21U, 0U, 0U, 0U};
+  uint8_t command[8] = {GPIO_PIN_CFG, 0, 0, 0x20, 0x21, 0, 0, 0};
   uint8_t response[8];
 
   return SI4463_Command(command, sizeof(command)) &&
@@ -547,16 +555,16 @@ static uint8_t SI4463_ConfigGpio(void)
 static uint8_t SI4463_SetFrequency(void)
 { // 按参考公式设置基频和信道间隔
   uint8_t command[10];
-  uint8_t outDiv = (frequencyBase >= 850U) ? 1U : 2U;
-  uint8_t integer = (uint8_t)(outDiv * frequencyBase / 15U - 1U);
-  uint32_t fraction = (uint32_t)outDiv * frequencyBase * 524288U / 15U -
-    (uint32_t)integer * 524288U;
-  uint16_t step = (uint16_t)(524288U * outDiv * frequencyStep / 15000U);
+  uint8_t outDiv = (frequencyBase >= 850) ? 1 : 2;
+  uint8_t integer = (uint8_t)(outDiv * frequencyBase / 15 - 1);
+  uint32_t fraction = (uint32_t)outDiv * frequencyBase * 524288 / 15 -
+    (uint32_t)integer * 524288;
+  uint16_t step = (uint16_t)((uint32_t)524288 * outDiv * frequencyStep / 15000);
 
   command[0] = SET_PROPERTY;
-  command[1] = 0x40U;
-  command[2] = 0x06U;
-  command[3] = 0U;
+  command[1] = 0x40;
+  command[2] = 0x06;
+  command[3] = 0;
   command[4] = integer;
   command[5] = (uint8_t)(fraction >> 16);
   command[6] = (uint8_t)(fraction >> 8);
@@ -568,8 +576,8 @@ static uint8_t SI4463_SetFrequency(void)
 
 static uint8_t SI4463_SetTxPower(void)
 { // 设置与参考工程一致的发射功率
-  uint8_t command[8] = {SET_PROPERTY, 0x22U, 0x04U, 0U,
-    0x08U, txPower, 0U, 0x3DU};
+  uint8_t command[8] = {SET_PROPERTY, 0x22, 0x04, 0,
+    0x08, txPower, 0, 0x3D};
   return SI4463_Command(command, sizeof(command));
 }
 
@@ -581,34 +589,34 @@ static uint8_t SI4463_ChangeState(uint8_t state)
 
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status)
 { // 读取并清除SI4463全部中断状态
-  uint8_t command[4] = {GET_INT_STATUS, 0U, 0U, 0U};
+  uint8_t command[4] = {GET_INT_STATUS, 0, 0, 0};
   uint8_t index;
-  uint8_t allOnes = 1U;
+  uint8_t allOnes = 1;
 
-  if (!SI4463_Command(command, sizeof(command)) || !SI4463_ReadResponse(status, 9U))
+  if (!SI4463_Command(command, sizeof(command)) || !SI4463_ReadResponse(status, 9))
   {
-    return 0U;
+    return 0;
   }
-  for (index = 0U; index < 9U; index++)
+  for (index = 0; index < 9; index++)
   {
-    if (status[index] != 0xFFU)
+    if (status[index] != 0xFF)
     {
-      allOnes = 0U;
+      allOnes = 0;
       break;
     }
   }
-  return !allOnes && (status[3] != 0xFFU);
+  return !allOnes && (status[3] != 0xFF);
 }
 
 static uint8_t SI4463_ResetRxFifo(void)
 { // 清空接收FIFO
-  uint8_t command[2] = {FIFO_INFO, 0x02U};
+  uint8_t command[2] = {FIFO_INFO, 0x02};
   return SI4463_Command(command, sizeof(command));
 }
 
 static uint8_t SI4463_ResetTxFifo(void)
 { // 清空发送FIFO
-  uint8_t command[2] = {FIFO_INFO, 0x01U};
+  uint8_t command[2] = {FIFO_INFO, 0x01};
   return SI4463_Command(command, sizeof(command));
 }
 
@@ -618,16 +626,16 @@ static uint8_t SI4463_StartReceive(void)
 
   if (!SI4463_ResetRxFifo())
   {
-    return 0U;
+    return 0;
   }
   command[0] = START_RX;
   command[1] = currentChannel;
-  command[2] = 0U;
-  command[3] = 0U;
-  command[4] = variableMode ? 0U : SI4463_PACKET_LENGTH;
-  command[5] = 0U;
-  command[6] = variableMode ? 3U : 0U;
-  command[7] = 3U;
+  command[2] = 0;
+  command[3] = 0;
+  command[4] = variableMode ? 0 : SI4463_PACKET_LENGTH;
+  command[5] = 0;
+  command[6] = variableMode ? 3 : 0;
+  command[7] = 3;
   return SI4463_Command(command, sizeof(command));
 }
 
@@ -638,15 +646,15 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
   uint8_t status[9];
   uint8_t attempts;
   uint8_t index;
-  uint8_t completed = 0U;
+  uint8_t completed = 0;
 
   if (!SI4463_ResetTxFifo() || !SI4463_ReadInterruptStatus(status) || !SI4463_WaitCts())
   {
-    return 0U;
+    return 0;
   }
   SI4463_Select();
   SI4463_ExchangeByte(WRITE_TX_FIFO);
-  for (index = 0U; index < length; index++)
+  for (index = 0; index < length; index++)
   {
     SI4463_ExchangeByte(data[index]);
   }
@@ -654,29 +662,29 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
   command[0] = START_TX;
   command[1] = channel;
   command[2] = condition;
-  command[3] = 0U;
+  command[3] = 0;
   command[4] = length;
   if (!SI4463_Command(command, sizeof(command)))
   {
-    return 0U;
+    return 0;
   }
-  for (attempts = 0U; attempts < SI4463_TX_COMPLETE_ATTEMPTS; attempts++)
+  for (attempts = 0; attempts < SI4463_WAIT_ATTEMPTS; attempts++)
   {
     osDelay(1);
-    if ((interruptPending != 0U) ||
+    if ((interruptPending != 0) ||
       (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
         BOARD_SI4463_MOSI_IRQ_PIN) == GPIO_PIN_RESET))
     {
       SI4463_TakeInterrupt();
       if (SI4463_ReadInterruptStatus(status) &&
-        ((status[3] & SI4463_PACKET_TX_COMPLETE) != 0U))
+        ((status[3] & SI4463_PACKET_TX_COMPLETE) != 0))
       {
-        completed = 1U;
+        completed = 1;
         break;
       }
     }
   }
-  SI4463_ChangeState(3U);
+  SI4463_ChangeState(3);
   SI4463_ReadInterruptStatus(status);
   return completed;
 }
@@ -687,86 +695,88 @@ static uint8_t SI4463_ReadFixedPacket(uint8_t *data)
 
   if (!SI4463_WaitCts())
   {
-    return 0U;
+    return 0;
   }
   SI4463_Select();
   SI4463_ExchangeByte(READ_RX_FIFO);
-  for (index = 0U; index < SI4463_PACKET_LENGTH; index++)
+  for (index = 0; index < SI4463_PACKET_LENGTH; index++)
   {
-    data[index] = SI4463_ExchangeByte(0xFFU);
+    data[index] = SI4463_ExchangeByte(0xFF);
   }
   SI4463_Deselect();
-  return 1U;
+  return 1;
 }
 
 static uint8_t SI4463_ReadVariablePacket(uint8_t *data, uint8_t *length)
 { // 读取并校验变长帧
-  uint8_t fifo[SI4463_VARIABLE_MAX_FIELD2 + 1U];
+  uint8_t fifo[SI4463_VARIABLE_MAX_FIELD2 + 1];
   uint8_t field2Length;
   uint8_t index;
   uint32_t receivedCrc;
   uint32_t calculatedCrc;
 
-  *length = 0U;
+  *length = 0;
   if (!SI4463_WaitCts())
   {
-    return 0U;
+    return 0;
   }
   SI4463_Select();
   SI4463_ExchangeByte(READ_RX_FIFO);
-  field2Length = SI4463_ExchangeByte(0xFFU);
-  if ((field2Length >= SI4463_VARIABLE_MIN_FIELD2) &&
+  field2Length = SI4463_ExchangeByte(0xFF);
+  if ((field2Length >=
+      (SI4463_VARIABLE_MIN_PAYLOAD + SI4463_VARIABLE_CRC_SIZE)) &&
     (field2Length <= SI4463_VARIABLE_MAX_FIELD2))
   {
     fifo[0] = field2Length;
-    for (index = 1U; index <= field2Length; index++)
+    for (index = 1; index <= field2Length; index++)
     {
-      fifo[index] = SI4463_ExchangeByte(0xFFU);
+      fifo[index] = SI4463_ExchangeByte(0xFF);
     }
   }
   SI4463_Deselect();
-  if ((field2Length < SI4463_VARIABLE_MIN_FIELD2) ||
+  if ((field2Length <
+      (SI4463_VARIABLE_MIN_PAYLOAD + SI4463_VARIABLE_CRC_SIZE)) ||
     (field2Length > SI4463_VARIABLE_MAX_FIELD2))
   {
     SI4463_ResetRxFifo();
-    return 0U;
+    return 0;
   }
   receivedCrc = (uint32_t)fifo[1] |
     ((uint32_t)fifo[2] << 8) | ((uint32_t)fifo[3] << 16);
   *length = field2Length - SI4463_VARIABLE_CRC_SIZE;
   calculatedCrc = SI4463_ComputeCrc(&fifo[4], *length);
-  if ((calculatedCrc & 0x00FFFFFFU) != receivedCrc)
+  if ((calculatedCrc & 0x00FFFFFF) != receivedCrc)
   {
-    *length = 0U;
+    *length = 0;
     SI4463_ResetRxFifo();
-    return 0U;
+    return 0;
   }
   memcpy(data, &fifo[4], *length);
-  return 1U;
+  return 1;
 }
 
 static uint32_t SI4463_ComputeCrc(const uint8_t *data, uint16_t length)
 { // 使用STM32硬件CRC计算与参考工程一致的CRC32
-  uint16_t offset = 0U;
-  uint32_t lastWord = 0U;
+  uint16_t offset = 0;
+  uint32_t lastWord = 0;
   uint8_t index;
 
   __HAL_RCC_CRC_CLK_ENABLE();
   CRC->CR = CRC_CR_RESET;
-  while (length >= 4U)
+  while (length >= 4)
   {
     CRC->DR = (uint32_t)data[offset] |
-      ((uint32_t)data[offset + 1U] << 8) |
-      ((uint32_t)data[offset + 2U] << 16) |
-      ((uint32_t)data[offset + 3U] << 24);
-    offset += 4U;
-    length -= 4U;
+      ((uint32_t)data[offset + 1] << 8) |
+      ((uint32_t)data[offset + 2] << 16) |
+      ((uint32_t)data[offset + 3] << 24);
+    offset += 4;
+    length -= 4;
   }
-  for (index = 0U; index < length; index++)
+  for (index = 0; index < length; index++)
   {
-    lastWord |= (uint32_t)data[offset + index] << (index * 8U);
+    lastWord |= (uint32_t)data[offset + index] << (index * 8);
   }
-  if (length > 0U)
+  if (length > 0)
   {
     CRC->DR = lastWord;
   }
@@ -780,8 +790,8 @@ static uint8_t SI4463_TakeInterrupt(void)
 
   __disable_irq();
   pending = interruptPending;
-  interruptPending = 0U;
-  if (interruptState == 0U)
+  interruptPending = 0;
+  if (interruptState == 0)
   {
     __enable_irq();
   }
@@ -797,6 +807,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpioPin)
 { // 记录SI4463中断，交由无线任务处理
   if (gpioPin == BOARD_SI4463_MOSI_IRQ_PIN)
   {
-    interruptPending = 1U;
+    interruptPending = 1;
   }
 }

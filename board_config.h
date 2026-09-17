@@ -9,14 +9,14 @@
 #define BOARD_RF_TEST_FIXED_CONFIG       1
 
 /* 程序信息：固定写入Flash的0x08004000起始位置 */
-#define BOARD_VERSION                     0x0001U
-#define BOARD_DEVICE_TYPE                 0x0001U
+#define BOARD_VERSION                     0x0001
+#define BOARD_DEVICE_TYPE                 0x0001
 
 /* 注册信息：STM32F103C8末段独占1KB页 */
-#define BOARD_UID_ADDRESS                 0x1FFFF7E8U
-#define BOARD_REGISTRATION_ADDRESS        0x0800E000U
+#define BOARD_UID_ADDRESS                 0x1FFFF7E8
+#define BOARD_REGISTRATION_ADDRESS        0x0800E000
 
-/* SI4463模拟SPI：与参考充电桩工程保持一致 */
+/* SI4463模拟SPI */
 #define BOARD_SI4463_GPIO_PORT             GPIOB
 #define BOARD_SI4463_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()
 #define BOARD_SI4463_CSN_PIN               GPIO_PIN_3
@@ -24,13 +24,15 @@
 #define BOARD_SI4463_MOSI_IRQ_PIN          GPIO_PIN_5
 #define BOARD_SI4463_SCK_PIN               GPIO_PIN_6
 #define BOARD_SI4463_IRQN                  EXTI9_5_IRQn
-#define BOARD_WIRELESS_ADDRESS_STORAGE     0x08011C00U
-#define BOARD_WIRELESS_ADDRESS_DEFAULT     0x0000EEEEU
-#define BOARD_WIRELESS_ADDRESS_TEST        0x0000567DU
-#define BOARD_RF_HOME_CHANNEL_STORAGE      0x08011C04U
-#define BOARD_RF_FREQUENCY_STORAGE         0x08011C08U
-#define BOARD_RF_FREQUENCY_STEP_STORAGE    0x08011C0CU
-#define BOARD_RF_TX_POWER_STORAGE          0x08011C10U
+
+/* 无线地址和射频参数存储 */
+#define BOARD_WIRELESS_ADDRESS_STORAGE     0x08011C00
+#define BOARD_WIRELESS_ADDRESS_DEFAULT     0x0000EEEE
+#define BOARD_WIRELESS_ADDRESS_TEST        0x0000567D
+#define BOARD_RF_HOME_CHANNEL_STORAGE      0x08011C04
+#define BOARD_RF_FREQUENCY_STORAGE         0x08011C08
+#define BOARD_RF_FREQUENCY_STEP_STORAGE    0x08011C0C
+#define BOARD_RF_TX_POWER_STORAGE          0x08011C10
 
 /* 充电采样：三相电流PA3~PA5，输出电压PA0~PA2，输入电压PA6/PA7/PB0 */
 #define BOARD_ADC_INSTANCE                 ADC1
@@ -66,7 +68,7 @@
 #define BOARD_CAN_RX_PIN                 GPIO_PIN_11
 #define BOARD_CAN_TX_PORT                GPIOA
 #define BOARD_CAN_TX_PIN                 GPIO_PIN_12
-#define BOARD_CAN_PRESCALER              1U
+#define BOARD_CAN_PRESCALER              1
 #define BOARD_CAN_RX_IRQn                USB_LP_CAN1_RX0_IRQn
 #define BOARD_CAN_SCE_IRQn               CAN1_SCE_IRQn
 
@@ -79,6 +81,6 @@
 #define BOARD_UART_TX_PIN                GPIO_PIN_9
 #define BOARD_UART_RX_PORT               GPIOA
 #define BOARD_UART_RX_PIN                GPIO_PIN_10
-#define BOARD_UART_BAUD_RATE             115200U
+#define BOARD_UART_BAUD_RATE             115200
 
 #endif

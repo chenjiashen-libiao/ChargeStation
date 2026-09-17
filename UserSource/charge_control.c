@@ -5,20 +5,13 @@
 
 #pragma GCC optimize ("Os")
 
-#define CHARGE_PHASE_COUNT               3U
-#define CHARGE_OUTPUT_VALID_MIN_MV       200
-#define CHARGE_OUTPUT_VALID_MAX_MV       5200
-#define CHARGE_LOW_BATTERY_MAX_MV        4100
-#define CHARGE_REDUCE_CURRENT_MV         5400
-#define CHARGE_INPUT_VALID_MIN_MV        5200U
-#define CHARGE_OVERCURRENT_MA            50000
-#define CHARGE_PRECHARGE_CURRENT_MA      10000
-#define CHARGE_TEST_CURRENT_MA           5000
-#define CHARGE_MAX_CURRENT_MA            30000
-#define CHARGE_CURRENT_INTEGRAL_DIV      100000
-#define CHARGE_CURRENT_INTEGRAL_MAX      70000000
-#define CHARGE_CURRENT_INTEGRAL_MIN      (-70000000)
-#define CHARGE_FEEDFORWARD_INTERVAL      16U
+/* 充电判定与控制阈值 */
+#define CHARGE_OUTPUT_VALID_MIN_MV      200       // 电池接入判定下限，单位mV
+#define CHARGE_VALID_MAX_MV             5200      // 输入有效及输出保护边界，单位mV
+#define CHARGE_LOW_BATTERY_MAX_MV       4100      // 允许继续预充的电压上限，单位mV
+#define CHARGE_OVERCURRENT_MA           50000     // 单相过流保护阈值，单位mA
+#define CHARGE_TEST_CURRENT_MA          5000      // 内阻测试目标电流，单位mA
+#define CHARGE_CURRENT_INTEGRAL_LIMIT   70000000  // 电流环积分绝对值上限
 
 static volatile int32_t targetCurrent[CHARGE_PHASE_COUNT];
 static volatile int32_t currentIntegral[CHARGE_PHASE_COUNT];
@@ -27,6 +20,7 @@ static volatile int32_t pwmFeedforward[CHARGE_PHASE_COUNT];
 static volatile uint16_t pwmOutput[CHARGE_PHASE_COUNT];
 static volatile uint16_t outputMask;
 static uint8_t feedforwardCounter;
+static const uint16_t phaseMasks[CHARGE_PHASE_COUNT] = {0x0001, 0x0010, 0x0100};
 
 static uint8_t ChargeControl_IsOutputValid(uint8_t phase);
 static uint8_t ChargeControl_AnyOutputValid(void);
@@ -49,12 +43,12 @@ void ChargeControl_Init(void)
   uint8_t phase;
 
   ChargePWM_Init();
-  ChargePWM_SetMosEnabled(0U);
+  ChargePWM_SetMosEnabled(0);
   ChargePWM_DisableMain();
   ChargePWM_DisableAllPhases();
-  outputMask = 0U;
-  feedforwardCounter = 0U;
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  outputMask = 0;
+  feedforwardCounter = 0;
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     targetCurrent[phase] = 0;
     currentIntegral[phase] = 0;
@@ -71,25 +65,26 @@ void ChargeControl_Task(void const *argument)
   uint8_t phase;
 
   (void)argument;
-  osDelay(20U);
+  osDelay(20);
   for (;;)
   {
+    // 每轮依次执行电池检测、输入确认、预充、内阻测试和正式充电
     ChargeControl_SetAllTargets(0);
-    osDelay(200U);
+    osDelay(200);
     ChargeControl_DisableOutputs();
 
     while (!ChargeControl_AnyOutputValid())
     {
-      ChargePWM_SetMosEnabled(0U);
-      osDelay(1200U);
+      ChargePWM_SetMosEnabled(0);
+      osDelay(1200);
     }
 
-    ChargePWM_SetMosEnabled(1U);
-    osDelay(500U);
+    ChargePWM_SetMosEnabled(1);
+    osDelay(500);
     ChargeControl_BuildOutputMask();
-    if (outputMask == 0U)
+    if (outputMask == 0)
     {
-      ChargePWM_SetMosEnabled(0U);
+      ChargePWM_SetMosEnabled(0);
       continue;
     }
 
@@ -97,13 +92,14 @@ void ChargeControl_Task(void const *argument)
     ChargeControl_TestResistance();
     ChargeControl_StartCharging();
 
-    reduceCount = 0U;
+    reduceCount = 0;
     for (;;)
     {
-      osDelay(301U);
-      if (ChargeControl_AnyOutputHigh(CHARGE_REDUCE_CURRENT_MV))
+      // 输出超过5.4V时逐步降流，连续五次后结束本轮充电
+      osDelay(301);
+      if (ChargeControl_AnyOutputHigh(5400))
       {
-        for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+        for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
         {
           targetCurrent[phase] -= 5000;
           if (targetCurrent[phase] <= 5000)
@@ -111,23 +107,23 @@ void ChargeControl_Task(void const *argument)
             targetCurrent[phase] = 6000;
           }
         }
-        osDelay(50U);
+        osDelay(50);
         reduceCount++;
       }
-      if (reduceCount > 4U)
+      if (reduceCount > 4)
       {
         break;
       }
       if (ChargePWM_HasBreakFault())
       {
         ChargePWM_ClearBreakFault();
-        osDelay(5000U);
+        osDelay(5000);
         break;
       }
       if (!ChargePWM_IsMainEnabled() || !ChargeControl_AnyPhaseEnabled() ||
         !ChargePWM_IsMosEnabled())
       {
-        osDelay(5000U);
+        osDelay(5000);
         break;
       }
     }
@@ -139,22 +135,23 @@ void ChargeControl_Update(void)
   uint8_t updateFeedforward;
   uint8_t phase;
 
+  // 欠压和过流保护每轮执行，耗时较大的电压前馈每16轮更新一次
   feedforwardCounter++;
-  updateFeedforward = feedforwardCounter >= CHARGE_FEEDFORWARD_INTERVAL;
+  updateFeedforward = feedforwardCounter >= 16;
   if (updateFeedforward)
   {
-    feedforwardCounter = 0U;
+    feedforwardCounter = 0;
   }
 
-  if ((g_intvolt[0] < CHARGE_INPUT_VALID_MIN_MV) &&
-    (g_intvolt[1] < CHARGE_INPUT_VALID_MIN_MV) &&
-    (g_intvolt[2] < CHARGE_INPUT_VALID_MIN_MV))
+  if ((g_intvolt[0] < CHARGE_VALID_MAX_MV) &&
+    (g_intvolt[1] < CHARGE_VALID_MAX_MV) &&
+    (g_intvolt[2] < CHARGE_VALID_MAX_MV))
   {
     ChargePWM_DisableMain();
-    ChargePWM_SetMosEnabled(0U);
+    ChargePWM_SetMosEnabled(0);
   }
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if ((g_I[phase] > CHARGE_OVERCURRENT_MA) ||
       (g_I[phase] < -CHARGE_OVERCURRENT_MA))
@@ -162,12 +159,12 @@ void ChargeControl_Update(void)
       ChargeControl_DisablePhase(phase);
     }
 
-    if (updateFeedforward && (g_intvolt[phase] > 0U))
+    if (updateFeedforward && (g_intvolt[phase] > 0))
     {
       pwmFeedforward[phase] = g_out_Volt[phase] *
-        (CHARGE_PWM_PERIOD + 1U) / g_intvolt[phase];
+        (CHARGE_PWM_PERIOD + 1) / g_intvolt[phase];
     }
-    else if (g_intvolt[phase] == 0U)
+    else if (g_intvolt[phase] == 0)
     {
       pwmFeedforward[phase] = CHARGE_PWM_MIN_COMPARE;
       ChargeControl_DisablePhase(phase);
@@ -223,85 +220,85 @@ uint8_t ChargeControl_HasBreakFault(void)
 static uint8_t ChargeControl_IsOutputValid(uint8_t phase)
 { // 判断指定相是否检测到有效电池电压
   return (g_out_Volt[phase] > CHARGE_OUTPUT_VALID_MIN_MV) &&
-    (g_out_Volt[phase] < CHARGE_OUTPUT_VALID_MAX_MV);
+    (g_out_Volt[phase] < CHARGE_VALID_MAX_MV);
 }
 
 static uint8_t ChargeControl_AnyOutputValid(void)
 { // 判断任意一相是否检测到有效电池电压
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if (ChargeControl_IsOutputValid(phase))
     {
-      return 1U;
+      return 1;
     }
   }
-  return 0U;
+  return 0;
 }
 
 static uint8_t ChargeControl_AnyPhaseEnabled(void)
 { // 判断任意一相PWM支路是否开启
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if (ChargePWM_IsPhaseEnabled(phase))
     {
-      return 1U;
+      return 1;
     }
   }
-  return 0U;
+  return 0;
 }
 
 static uint8_t ChargeControl_AllOutputsLow(void)
 { // 判断三相输出是否都满足首次进入预充的电压范围
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if ((g_out_Volt[phase] <= CHARGE_OUTPUT_VALID_MIN_MV) ||
       (g_out_Volt[phase] >= CHARGE_LOW_BATTERY_MAX_MV))
     {
-      return 0U;
+      return 0;
     }
   }
-  return 1U;
+  return 1;
 }
 
 static uint8_t ChargeControl_AllOutputsBelowPrechargeLimit(void)
 { // 按参考流程判断三相是否继续预充
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if (g_out_Volt[phase] >= CHARGE_LOW_BATTERY_MAX_MV)
     {
-      return 0U;
+      return 0;
     }
   }
-  return 1U;
+  return 1;
 }
 
 static uint8_t ChargeControl_AnyOutputHigh(int32_t voltage)
 { // 判断任意一相输出电压是否超过给定阈值
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if (g_out_Volt[phase] > voltage)
     {
-      return 1U;
+      return 1;
     }
   }
-  return 0U;
+  return 0;
 }
 
 static void ChargeControl_SetAllTargets(int32_t current)
 { // 设置三相目标电流
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     targetCurrent[phase] = current;
   }
@@ -309,9 +306,7 @@ static void ChargeControl_SetAllTargets(int32_t current)
 
 static void ChargeControl_EnablePhase(uint8_t phase)
 { // 仅打开已通过电压检查的相
-  static const uint16_t masks[CHARGE_PHASE_COUNT] = {0x0001U, 0x0010U, 0x0100U};
-
-  if ((phase < CHARGE_PHASE_COUNT) && ((outputMask & masks[phase]) != 0U))
+  if ((phase < CHARGE_PHASE_COUNT) && ((outputMask & phaseMasks[phase]) != 0))
   {
     ChargePWM_EnablePhase(phase);
   }
@@ -330,16 +325,15 @@ static void ChargeControl_DisableOutputs(void)
 
 static void ChargeControl_BuildOutputMask(void)
 { // 根据三相电池电压和输入电源生成输出允许位
-  static const uint16_t masks[CHARGE_PHASE_COUNT] = {0x0001U, 0x0010U, 0x0100U};
   uint8_t phase;
 
-  outputMask = 0U;
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  outputMask = 0;
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     if (ChargeControl_IsOutputValid(phase) &&
-      (g_intvolt[phase] > CHARGE_INPUT_VALID_MIN_MV))
+      (g_intvolt[phase] > CHARGE_VALID_MAX_MV))
     {
-      outputMask |= masks[phase];
+      outputMask |= phaseMasks[phase];
     }
   }
 }
@@ -349,35 +343,36 @@ static void ChargeControl_Precharge(void)
   uint16_t count;
   uint8_t breakFlag;
 
+  // 只有三相均处于首次预充电压范围才进入，避免对异常电池直接加压
   if (!ChargeControl_AllOutputsLow())
   {
     return;
   }
   do
   {
-    breakFlag = 0U;
-    ChargeControl_EnablePhase(0U);
-    ChargeControl_EnablePhase(1U);
-    ChargeControl_EnablePhase(2U);
-    ChargeControl_SetAllTargets(CHARGE_PRECHARGE_CURRENT_MA);
-    osDelay(1U);
+    breakFlag = 0;
+    ChargeControl_EnablePhase(0);
+    ChargeControl_EnablePhase(1);
+    ChargeControl_EnablePhase(2);
+    ChargeControl_SetAllTargets(10000);
+    osDelay(1);
     ChargePWM_EnableMain();
-    osDelay(10U);
-    for (count = 0U; count < 1000U; count++)
+    osDelay(10);
+    for (count = 0; count < 1000; count++)
     {
-      osDelay(25U);
+      osDelay(25);
       if (ChargeControl_AnyOutputHigh(5000))
       {
-        breakFlag = 1U;
+        breakFlag = 1;
         break;
       }
     }
-    osDelay(10U);
+    osDelay(10);
     ChargePWM_DisableMain();
-    osDelay(10U);
+    osDelay(10);
     ChargePWM_DisableAllPhases();
     ChargeControl_SetAllTargets(0);
-    osDelay(2000U);
+    osDelay(2000);
     if (breakFlag)
     {
       break;
@@ -392,21 +387,22 @@ static void ChargeControl_TestResistance(void)
   int32_t resistanceVoltage;
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
-    osDelay(1U);
+    osDelay(1);
     beginVoltage = g_out_Volt[phase];
     ChargeControl_EnablePhase(phase);
     targetCurrent[phase] = CHARGE_TEST_CURRENT_MA;
-    osDelay(10U);
+    osDelay(10);
     ChargePWM_EnableMain();
-    osDelay(800U);
+    osDelay(800);
     resistanceVoltage = g_out_Volt[phase] - beginVoltage;
     ChargeControl_DisablePhase(phase);
-    osDelay(10U);
+    osDelay(10);
     ChargePWM_DisableMain();
-    osDelay(10U);
+    osDelay(10);
 
+    // 压升决定基础目标电流，温度和输出电压进一步限制允许电流
     if (resistanceVoltage > 300)
     {
       resistanceVoltage = 300;
@@ -416,7 +412,7 @@ static void ChargeControl_TestResistance(void)
       resistanceVoltage = 0;
     }
     targetCurrent[phase] = -100 * resistanceVoltage + 36000;
-    if (g_out_Volt[phase] > CHARGE_OUTPUT_VALID_MAX_MV)
+    if (g_out_Volt[phase] > CHARGE_VALID_MAX_MV)
     {
       targetCurrent[phase] = 5001;
     }
@@ -430,14 +426,13 @@ static void ChargeControl_TestResistance(void)
       {
         targetCurrent[phase] -= 5000;
       }
-      if (targetCurrent[phase] > CHARGE_MAX_CURRENT_MA)
+      if (targetCurrent[phase] > 30000)
       {
-        targetCurrent[phase] = CHARGE_MAX_CURRENT_MA;
+        targetCurrent[phase] = 30000;
       }
       if (targetCurrent[phase] <= CHARGE_TEST_CURRENT_MA)
       {
-        static const uint16_t masks[CHARGE_PHASE_COUNT] = {0x0001U, 0x0010U, 0x0100U};
-        outputMask &= (uint16_t)~masks[phase];
+        outputMask &= (uint16_t)~phaseMasks[phase];
       }
     }
   }
@@ -447,30 +442,31 @@ static void ChargeControl_StartCharging(void)
 { // 打开有效相并启动TIM1主输出
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     ChargeControl_EnablePhase(phase);
-    osDelay(1U);
+    osDelay(1);
   }
-  osDelay(10U);
+  osDelay(10);
   ChargePWM_EnableMain();
-  osDelay(10U);
+  osDelay(10);
 }
 
 static void ChargeControl_UpdateCurrentLoop(uint8_t phase)
 { // 按参考积分算法更新指定相PWM
   int32_t pwm;
 
+  // 输入电压前馈提供基础占空比，电流误差积分只负责补偿偏差
   currentIntegral[phase] += targetCurrent[phase] - g_I[phase];
-  if (currentIntegral[phase] > CHARGE_CURRENT_INTEGRAL_MAX)
+  if (currentIntegral[phase] > CHARGE_CURRENT_INTEGRAL_LIMIT)
   {
-    currentIntegral[phase] = CHARGE_CURRENT_INTEGRAL_MAX;
+    currentIntegral[phase] = CHARGE_CURRENT_INTEGRAL_LIMIT;
   }
-  if (currentIntegral[phase] < CHARGE_CURRENT_INTEGRAL_MIN)
+  if (currentIntegral[phase] < -CHARGE_CURRENT_INTEGRAL_LIMIT)
   {
-    currentIntegral[phase] = CHARGE_CURRENT_INTEGRAL_MIN;
+    currentIntegral[phase] = -CHARGE_CURRENT_INTEGRAL_LIMIT;
   }
-  currentCorrection[phase] = currentIntegral[phase] / CHARGE_CURRENT_INTEGRAL_DIV;
+  currentCorrection[phase] = currentIntegral[phase] / 100000;
   pwm = pwmFeedforward[phase] + currentCorrection[phase];
   if (pwm > CHARGE_PWM_MAX_COMPARE)
   {

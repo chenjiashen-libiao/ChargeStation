@@ -105,14 +105,14 @@ static void ADC_UpdateMeasurements(void)
 { // 按参考工程公式换算三相采样值
   uint8_t phase;
 
-  for (phase = 0U; phase < CHARGE_PHASE_COUNT; phase++)
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
-    g_out_Volt[phase] = (int32_t)g_ADC_ConvertedValue[phase + 3U] * 6600 / 4096;
-    g_intvolt[phase] = (uint16_t)((uint32_t)g_ADC_ConvertedValue[phase + 6U] * 6600U / 4096U);
+    g_out_Volt[phase] = (int32_t)g_ADC_ConvertedValue[phase + 3] * 6600 / 4096;
+    g_intvolt[phase] = (uint16_t)((uint32_t)g_ADC_ConvertedValue[phase + 6] * 6600 / 4096);
     g_I[phase] = ((int32_t)g_ADC_ConvertedValue[phase] * 6600 / 4096 - 2500) * 25;
   }
 
-  if (g_ADC_ConvertedValue[9] != 0U)
+  if (g_ADC_ConvertedValue[9] != 0)
   {
     g_ref_1v2_vol = (1200 * 4096) / g_ADC_ConvertedValue[9];
   }

@@ -2,7 +2,8 @@
 
 #include <string.h>
 
-#define BIGINT_MAX_LENGTH 35U
+/* 大整数容量以32位字为单位，覆盖当前RSA运算的中间结果 */
+#define BIGINT_MAX_LENGTH               35
 
 typedef struct
 {
@@ -36,7 +37,7 @@ static BigInt BigInt_ModExp(const BigInt *base, const BigInt *exponent,
 
 void RegistrationRSA_Decrypt(const uint8_t cipher[REGISTRATION_RSA_CIPHER_LENGTH],
   uint8_t plain[REGISTRATION_RSA_PLAIN_LENGTH])
-{
+{ // 使用内置RSA公钥解密注册密文
   BigInt exponent;
   BigInt modulusValue;
   BigInt cipherValue;
@@ -50,15 +51,15 @@ void RegistrationRSA_Decrypt(const uint8_t cipher[REGISTRATION_RSA_CIPHER_LENGTH
 }
 
 static void BigInt_Set(BigInt *number, uint64_t value)
-{
+{ // 用64位无符号值初始化大整数
   memset(number, 0, sizeof(*number));
-  number->length = (value > UINT32_MAX) ? 2U : 1U;
+  number->length = (value > UINT32_MAX) ? 2 : 1;
   number->value[0] = (uint32_t)value;
   number->value[1] = (uint32_t)(value >> 32);
 }
 
 static int BigInt_Compare(const BigInt *left, const BigInt *right)
-{
+{ // 比较两个无符号大整数
   int32_t index;
 
   if (left->length != right->length)
@@ -78,10 +79,10 @@ static int BigInt_Compare(const BigInt *left, const BigInt *right)
 }
 
 static BigInt BigInt_Add(const BigInt *left, const BigInt *right)
-{
+{ // 计算两个大整数之和
   BigInt result = *left;
   uint64_t sum;
-  uint32_t carry = 0U;
+  uint32_t carry = 0;
   uint32_t index;
 
   if (result.length < right->length)
@@ -89,14 +90,14 @@ static BigInt BigInt_Add(const BigInt *left, const BigInt *right)
     result.length = right->length;
   }
 
-  for (index = 0U; index < result.length; index++)
+  for (index = 0; index < result.length; index++)
   {
     sum = (uint64_t)result.value[index] + right->value[index] + carry;
     result.value[index] = (uint32_t)sum;
     carry = (uint32_t)(sum >> 32);
   }
 
-  if ((carry != 0U) && (result.length < BIGINT_MAX_LENGTH))
+  if ((carry != 0) && (result.length < BIGINT_MAX_LENGTH))
   {
     result.value[result.length++] = carry;
   }
@@ -105,26 +106,26 @@ static BigInt BigInt_Add(const BigInt *left, const BigInt *right)
 }
 
 static BigInt BigInt_Subtract(const BigInt *left, const BigInt *right)
-{
+{ // 计算非负的大整数差值
   BigInt result = *left;
   uint64_t subtrahend;
-  uint32_t borrow = 0U;
+  uint32_t borrow = 0;
   uint32_t index;
 
   if (BigInt_Compare(left, right) <= 0)
   {
-    BigInt_Set(&result, 0U);
+    BigInt_Set(&result, 0);
     return result;
   }
 
-  for (index = 0U; index < left->length; index++)
+  for (index = 0; index < left->length; index++)
   {
     subtrahend = (uint64_t)right->value[index] + borrow;
-    borrow = ((uint64_t)left->value[index] < subtrahend) ? 1U : 0U;
+    borrow = ((uint64_t)left->value[index] < subtrahend) ? 1 : 0;
     result.value[index] = (uint32_t)((uint64_t)left->value[index] - subtrahend);
   }
 
-  while ((result.length > 1U) && (result.value[result.length - 1U] == 0U))
+  while ((result.length > 1) && (result.value[result.length - 1] == 0))
   {
     result.length--;
   }
@@ -133,20 +134,20 @@ static BigInt BigInt_Subtract(const BigInt *left, const BigInt *right)
 }
 
 static BigInt BigInt_MultiplyWord(const BigInt *number, uint32_t multiplier)
-{
+{ // 计算大整数与单个32位字的乘积
   BigInt result = *number;
   uint64_t product;
-  uint32_t carry = 0U;
+  uint32_t carry = 0;
   uint32_t index;
 
-  for (index = 0U; index < number->length; index++)
+  for (index = 0; index < number->length; index++)
   {
     product = (uint64_t)number->value[index] * multiplier + carry;
     result.value[index] = (uint32_t)product;
     carry = (uint32_t)(product >> 32);
   }
 
-  if ((carry != 0U) && (result.length < BIGINT_MAX_LENGTH))
+  if ((carry != 0) && (result.length < BIGINT_MAX_LENGTH))
   {
     result.value[result.length++] = carry;
   }
@@ -155,7 +156,7 @@ static BigInt BigInt_MultiplyWord(const BigInt *number, uint32_t multiplier)
 }
 
 static BigInt BigInt_Mod(const BigInt *number, const BigInt *modulusValue)
-{
+{ // 通过估商和移位减法计算大整数余数
   BigInt result = *number;
   BigInt product;
   uint64_t dividend;
@@ -166,30 +167,30 @@ static BigInt BigInt_Mod(const BigInt *number, const BigInt *modulusValue)
 
   while (BigInt_Compare(&result, modulusValue) >= 0)
   {
-    dividend = result.value[result.length - 1U];
-    divisor = modulusValue->value[modulusValue->length - 1U];
+    dividend = result.value[result.length - 1];
+    divisor = modulusValue->value[modulusValue->length - 1];
     shift = result.length - modulusValue->length;
 
-    if ((dividend == divisor) && (shift == 0U))
+    if ((dividend == divisor) && (shift == 0))
     {
       result = BigInt_Subtract(&result, modulusValue);
       break;
     }
 
-    if ((dividend <= divisor) && (shift > 0U))
+    if ((dividend <= divisor) && (shift > 0))
     {
       shift--;
-      dividend = (dividend << 32) | result.value[result.length - 2U];
+      dividend = (dividend << 32) | result.value[result.length - 2];
     }
 
-    quotient = (uint32_t)(dividend / (divisor + 1U));
+    quotient = (uint32_t)(dividend / (divisor + 1));
     product = BigInt_MultiplyWord(modulusValue, quotient);
 
-    if (shift > 0U)
+    if (shift > 0)
     {
-      for (index = product.length; index > 0U; index--)
+      for (index = product.length; index > 0; index--)
       {
-        product.value[index + shift - 1U] = product.value[index - 1U];
+        product.value[index + shift - 1] = product.value[index - 1];
       }
       memset(product.value, 0, shift * sizeof(product.value[0]));
       product.length += shift;
@@ -202,29 +203,29 @@ static BigInt BigInt_Mod(const BigInt *number, const BigInt *modulusValue)
 }
 
 static void BigInt_FromBytes(BigInt *number, const uint8_t *data, uint32_t length)
-{
+{ // 将小端字节序列转换为大整数
   uint32_t index;
 
-  BigInt_Set(number, 0U);
+  BigInt_Set(number, 0);
   if (length > (BIGINT_MAX_LENGTH * sizeof(uint32_t)))
   {
     length = BIGINT_MAX_LENGTH * sizeof(uint32_t);
   }
 
-  for (index = 0U; index < length; index++)
+  for (index = 0; index < length; index++)
   {
-    number->value[index >> 2] |= (uint32_t)data[index] << ((index & 3U) * 8U);
+    number->value[index >> 2] |= (uint32_t)data[index] << ((index & 3) * 8);
   }
 
-  number->length = (length + 3U) >> 2;
-  while ((number->length > 1U) && (number->value[number->length - 1U] == 0U))
+  number->length = (length + 3) >> 2;
+  while ((number->length > 1) && (number->value[number->length - 1] == 0))
   {
     number->length--;
   }
 }
 
 static void BigInt_ToBytes(const BigInt *number, uint8_t *data, uint32_t length)
-{
+{ // 将大整数转换为定长小端字节序列
   uint32_t outputLength = length;
   uint32_t index;
 
@@ -234,24 +235,24 @@ static void BigInt_ToBytes(const BigInt *number, uint8_t *data, uint32_t length)
     outputLength = number->length * sizeof(uint32_t);
   }
 
-  for (index = 0U; index < outputLength; index++)
+  for (index = 0; index < outputLength; index++)
   {
-    data[index] = (uint8_t)(number->value[index >> 2] >> ((index & 3U) * 8U));
+    data[index] = (uint8_t)(number->value[index >> 2] >> ((index & 3) * 8));
   }
 }
 
 static BigInt BigInt_ModExp(const BigInt *base, const BigInt *exponent,
   const BigInt *modulusValue)
-{
+{ // 使用平方乘算法计算RSA模幂
   BigInt result = *base;
   BigInt accumulator;
   BigInt product;
-  uint32_t bitCount = (exponent->length - 1U) * 32U;
-  uint32_t value = exponent->value[exponent->length - 1U];
+  uint32_t bitCount = (exponent->length - 1) * 32;
+  uint32_t value = exponent->value[exponent->length - 1];
   int32_t bit;
   uint32_t index;
 
-  while (value != 0U)
+  while (value != 0)
   {
     value >>= 1;
     bitCount++;
@@ -259,31 +260,31 @@ static BigInt BigInt_ModExp(const BigInt *base, const BigInt *exponent,
 
   for (bit = (int32_t)bitCount - 2; bit >= 0; bit--)
   {
-    accumulator = BigInt_MultiplyWord(&result, result.value[result.length - 1U]);
+    accumulator = BigInt_MultiplyWord(&result, result.value[result.length - 1]);
     accumulator = BigInt_Mod(&accumulator, modulusValue);
-    for (index = 1U; index < result.length; index++)
+    for (index = 1; index < result.length; index++)
     {
       memmove(&accumulator.value[1], &accumulator.value[0],
         accumulator.length * sizeof(accumulator.value[0]));
-      accumulator.value[0] = 0U;
+      accumulator.value[0] = 0;
       accumulator.length++;
-      product = BigInt_MultiplyWord(&result, result.value[result.length - index - 1U]);
+      product = BigInt_MultiplyWord(&result, result.value[result.length - index - 1]);
       accumulator = BigInt_Add(&accumulator, &product);
       accumulator = BigInt_Mod(&accumulator, modulusValue);
     }
     result = accumulator;
 
-    if (((exponent->value[(uint32_t)bit >> 5] >> ((uint32_t)bit & 31U)) & 1U) != 0U)
+    if (((exponent->value[(uint32_t)bit >> 5] >> ((uint32_t)bit & 31)) & 1) != 0)
     {
-      accumulator = BigInt_MultiplyWord(base, result.value[result.length - 1U]);
+      accumulator = BigInt_MultiplyWord(base, result.value[result.length - 1]);
       accumulator = BigInt_Mod(&accumulator, modulusValue);
-      for (index = 1U; index < result.length; index++)
+      for (index = 1; index < result.length; index++)
       {
         memmove(&accumulator.value[1], &accumulator.value[0],
           accumulator.length * sizeof(accumulator.value[0]));
-        accumulator.value[0] = 0U;
+        accumulator.value[0] = 0;
         accumulator.length++;
-        product = BigInt_MultiplyWord(base, result.value[result.length - index - 1U]);
+        product = BigInt_MultiplyWord(base, result.value[result.length - index - 1]);
         accumulator = BigInt_Add(&accumulator, &product);
         accumulator = BigInt_Mod(&accumulator, modulusValue);
       }

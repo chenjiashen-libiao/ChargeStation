@@ -4,18 +4,19 @@
 #include "../board_config.h"
 #include "registration_rsa.h"
 
-#define REGISTRATION_SN_LENGTH     7U
-#define REGISTRATION_UID_LENGTH    12U
+/* RSA注册明文中的设备字段长度 */
+#define REGISTRATION_SN_LENGTH          7   // 设备序列号字节数
+#define REGISTRATION_UID_LENGTH         12  // STM32芯片UID字节数
 
 static uint8_t uidInFlash[REGISTRATION_UID_LENGTH];
 static uint8_t snInFlash[REGISTRATION_SN_LENGTH];
 static uint8_t isLegal;
 
 HAL_StatusTypeDef Registration_Save(const uint8_t *data, uint16_t length)
-{
+{ // 擦除注册页并保存RSA密文，成功后重新加载校验
   HAL_StatusTypeDef status;
   FLASH_EraseInitTypeDef erase = {0};
-  uint32_t pageError = 0U;
+  uint32_t pageError = 0;
   uint32_t address;
   uint16_t value;
 
@@ -30,9 +31,10 @@ HAL_StatusTypeDef Registration_Save(const uint8_t *data, uint16_t length)
     return status;
   }
 
+  // 注册页格式为2字节密文长度，后接完整RSA密文
   erase.TypeErase = FLASH_TYPEERASE_PAGES;
   erase.PageAddress = BOARD_REGISTRATION_ADDRESS;
-  erase.NbPages = 1U;
+  erase.NbPages = 1;
   status = HAL_FLASHEx_Erase(&erase, &pageError);
 
   if (status == HAL_OK)
@@ -41,9 +43,9 @@ HAL_StatusTypeDef Registration_Save(const uint8_t *data, uint16_t length)
       BOARD_REGISTRATION_ADDRESS, length);
   }
 
-  for (address = 0U; (address < length) && (status == HAL_OK); address += 2U)
+  for (address = 0; (address < length) && (status == HAL_OK); address += 2)
   {
-    value = (uint16_t)data[address] | ((uint16_t)data[address + 1U] << 8);
+    value = (uint16_t)data[address] | ((uint16_t)data[address + 1] << 8);
     status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,
       BOARD_REGISTRATION_ADDRESS + sizeof(uint16_t) + address, value);
   }
@@ -57,23 +59,23 @@ HAL_StatusTypeDef Registration_Save(const uint8_t *data, uint16_t length)
 }
 
 uint8_t Registration_IsLegal(void)
-{
+{ // 返回注册信息是否与本机硬件UID匹配
   return isLegal;
 }
 
 const uint8_t *Registration_GetSN(void)
-{
+{ // 返回注册信息中的7字节序列号
   return snInFlash;
 }
 
 void Registration_Load(void)
-{
+{ // 从Flash解密注册信息并校验本机UID
   const uint8_t *storedData = (const uint8_t *)BOARD_REGISTRATION_ADDRESS;
   const uint8_t *hardwareUID = (const uint8_t *)BOARD_UID_ADDRESS;
   uint16_t storedLength;
   uint8_t plainData[REGISTRATION_RSA_PLAIN_LENGTH];
 
-  isLegal = 0U;
+  isLegal = 0;
   memset(uidInFlash, 0xFF, sizeof(uidInFlash));
   memset(snInFlash, 0xFF, sizeof(snInFlash));
   memcpy(&storedLength, storedData, sizeof(storedLength));
@@ -82,11 +84,12 @@ void Registration_Load(void)
     return;
   }
 
+  // 只有密文长度正确且解密UID与芯片UID一致，设备才进入合法状态
   RegistrationRSA_Decrypt(storedData + sizeof(storedLength), plainData);
   memcpy(uidInFlash, plainData, sizeof(uidInFlash));
   memcpy(snInFlash, plainData + sizeof(uidInFlash), sizeof(snInFlash));
   if (memcmp(uidInFlash, hardwareUID, sizeof(uidInFlash)) == 0)
   {
-    isLegal = 1U;
+    isLegal = 1;
   }
 }

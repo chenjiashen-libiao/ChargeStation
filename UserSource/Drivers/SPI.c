@@ -7,7 +7,7 @@ static SPI_HandleTypeDef hspi2;
 static void SPI_GPIO_Init(void);
 
 void SPI_Init(void)
-{
+{ // 初始化可选的硬件SPI2接口和片选引脚
   SPI_GPIO_Init();
   SPI_CS_High();
 
@@ -35,29 +35,29 @@ void SPI_Init(void)
 }
 
 void SPI_CS_Low(void)
-{
+{ // 选中外部SPI设备
   HAL_GPIO_WritePin(BOARD_SPI_CS_PORT, BOARD_SPI_CS_PIN, GPIO_PIN_RESET);
 }
 
 void SPI_CS_High(void)
-{
+{ // 释放外部SPI设备片选
   HAL_GPIO_WritePin(BOARD_SPI_CS_PORT, BOARD_SPI_CS_PIN, GPIO_PIN_SET);
 }
 
 uint8_t SPI_TransferByte(uint8_t data)
-{
-  uint8_t rx_data = 0U;
+{ // 通过硬件SPI收发一个字节
+  uint8_t rx_data = 0;
 
   if (HAL_SPI_TransmitReceive(&hspi2, &data, &rx_data, 1, 100) != HAL_OK)
   {
-    return 0U;
+    return 0;
   }
 
   return rx_data;
 }
 
 static void SPI_GPIO_Init(void)
-{
+{ // 配置SPI片选、时钟和双向数据引脚
   GPIO_InitTypeDef gpio_init = {0};
 
   BOARD_SPI_GPIO_CLK_ENABLE();

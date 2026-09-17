@@ -3,12 +3,9 @@
 
 #include <stdint.h>
 
-#define SI4463_PACKET_LENGTH              16U
-#define SI4463_VARIABLE_MAX_PAYLOAD       60U
-#define SI4463_HOME_CHANNEL               0U
-#define SI4463_FREQUENCY_BASE_MHZ         0U
-#define SI4463_FREQUENCY_STEP_KHZ         250U
-#define SI4463_TX_POWER                   0x7FU
+/* 无线协议对外可用的负载长度 */
+#define SI4463_PACKET_LENGTH            16  // Home信道固定帧长度
+#define SI4463_VARIABLE_MAX_PAYLOAD     60  // 工作信道最大业务负载
 
 typedef struct
 {

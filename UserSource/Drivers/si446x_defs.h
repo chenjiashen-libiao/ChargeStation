@@ -1,21 +1,3 @@
-
-/************************************************************************
-;copyright    :shenzhen HRWT
-;filename     :main.c
-;mcu          :STC89LE52RC
-;crystal      :11.0592MHZ
-;RF           :XL4463-D01
-;rf crystal   :30MHZ
-;RF rate      :0.5K(默认，可以通过参数修改)
-;startdate    :2013.10.25
-;enddate      :
-;writeby      :WWW.HR-WT.COM
-;revision     :A
-;describe     :SI4463通讯测试
-;notice       :VCC= 3.3V
-;complier     :Keil C 
-;*************************************************************************/
-
 #ifndef _SI446X_DEFS_H_
 #define _SI446X_DEFS_H_
 

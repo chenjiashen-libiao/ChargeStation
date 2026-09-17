@@ -5,7 +5,8 @@ static CAN_HandleTypeDef hcan;
 
 static CAN_TxHeaderTypeDef txHeader;
 
-#define CAN_RX_QUEUE_SIZE 16U
+/* 中断接收队列最多缓存15帧，保留一个槽位区分队满和队空 */
+#define CAN_RX_QUEUE_SIZE              16
 
 typedef struct
 {
@@ -21,7 +22,7 @@ static void CAN_GPIO_Init(void);
 static void CAN_FilterConfig(void);
 
 void CAN_Init(void)
-{
+{ // 初始化CAN1、全接收过滤器及接收中断
   CAN_GPIO_Init();
 
   BOARD_CAN_CLK_ENABLE();
@@ -56,7 +57,7 @@ void CAN_Init(void)
 }
 
 HAL_StatusTypeDef CAN_SendDataId(uint32_t id, uint8_t *data, uint8_t len)
-{
+{ // 发送标准数据帧，邮箱忙时最多等待10ms
   uint32_t mailbox;
   uint32_t timeout = HAL_GetTick() + 10;
 
@@ -84,7 +85,7 @@ HAL_StatusTypeDef CAN_SendDataId(uint32_t id, uint8_t *data, uint8_t len)
 }
 
 uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
-{
+{ // 从中断写入的环形队列中原子取出最早一帧
   uint32_t interruptState;
   uint8_t i;
   CAN_RxFrame *frame;
@@ -93,7 +94,7 @@ uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
   __disable_irq();
   if (rxReadIndex == rxWriteIndex)
   {
-    if (interruptState == 0U)
+    if (interruptState == 0)
     {
       __enable_irq();
     }
@@ -119,8 +120,8 @@ uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
     }
   }
 
-  rxReadIndex = (rxReadIndex + 1U) % CAN_RX_QUEUE_SIZE;
-  if (interruptState == 0U)
+  rxReadIndex = (rxReadIndex + 1) % CAN_RX_QUEUE_SIZE;
+  if (interruptState == 0)
   {
     __enable_irq();
   }
@@ -128,14 +129,14 @@ uint8_t CAN_GetLastRx(uint32_t *id, uint8_t *len, uint8_t *dataBuf)
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcanInst)
-{
+{ // 在接收中断中将报文写入软件环形队列
   CAN_RxHeaderTypeDef header;
   uint8_t data[8];
   uint8_t nextWriteIndex;
 
   if (HAL_CAN_GetRxMessage(hcanInst, CAN_RX_FIFO0, &header, data) == HAL_OK)
   {
-    nextWriteIndex = (rxWriteIndex + 1U) % CAN_RX_QUEUE_SIZE;
+    nextWriteIndex = (rxWriteIndex + 1) % CAN_RX_QUEUE_SIZE;
     if (nextWriteIndex != rxReadIndex)
     {
       rxQueue[rxWriteIndex].header = header;
@@ -146,7 +147,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcanInst)
 }
 
 static void CAN_GPIO_Init(void)
-{
+{ // 配置CAN重映射及收发引脚
   GPIO_InitTypeDef gpio_init = {0};
 
   BOARD_CAN_GPIO_CLK_ENABLE();
@@ -165,7 +166,7 @@ static void CAN_GPIO_Init(void)
 }
 
 static void CAN_FilterConfig(void)
-{
+{ // 配置32位掩码过滤器接收全部CAN报文
   CAN_FilterTypeDef filter;
 
   filter.FilterBank = 0;
@@ -183,12 +184,12 @@ static void CAN_FilterConfig(void)
 }
 
 void USB_LP_CAN1_RX0_IRQHandler(void)
-{
+{ // 转交CAN FIFO0接收中断
   HAL_CAN_IRQHandler(&hcan);
 }
 
 void CAN1_SCE_IRQHandler(void)
-{
+{ // 转交CAN状态变化和错误中断
   HAL_CAN_IRQHandler(&hcan);
 }
 
