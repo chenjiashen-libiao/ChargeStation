@@ -21,7 +21,8 @@ SECTIONS
 
 	.appinfo 0x08004000 :
 	{
-		KEEP(*(.appinfo))
+		KEEP(*(.appversion))
+		KEEP(*(.appdevtype))
 		. = ALIGN(4);
 	} > FLASH
 

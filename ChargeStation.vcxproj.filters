@@ -81,6 +81,9 @@
     <ClCompile Include="UserSource\wireless_protocol.c">
       <Filter>Source files\UserSource</Filter>
     </ClCompile>
+    <ClCompile Include="UserSource\wireless_upgrade.c">
+      <Filter>Source files\UserSource</Filter>
+    </ClCompile>
     <ClCompile Include="UserSource\registration.c">
       <Filter>Source files\UserSource</Filter>
     </ClCompile>
@@ -340,6 +343,9 @@
       <Filter>Header files\UserSource</Filter>
     </ClInclude>
     <ClInclude Include="UserSource\wireless_protocol.h">
+      <Filter>Header files\UserSource</Filter>
+    </ClInclude>
+    <ClInclude Include="UserSource\wireless_upgrade.h">
       <Filter>Header files\UserSource</Filter>
     </ClInclude>
     <ClInclude Include="UserSource\registration.h">

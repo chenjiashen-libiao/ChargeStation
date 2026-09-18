@@ -19,6 +19,7 @@ static volatile int32_t currentCorrection[CHARGE_PHASE_COUNT];
 static volatile int32_t pwmFeedforward[CHARGE_PHASE_COUNT];
 static volatile uint16_t pwmOutput[CHARGE_PHASE_COUNT];
 static volatile uint16_t outputMask;
+static volatile uint8_t upgradeMode;
 static uint8_t feedforwardCounter;
 static const uint16_t phaseMasks[CHARGE_PHASE_COUNT] = {0x0001, 0x0010, 0x0100};
 
@@ -47,6 +48,7 @@ void ChargeControl_Init(void)
   ChargePWM_DisableMain();
   ChargePWM_DisableAllPhases();
   outputMask = 0;
+  upgradeMode = 0;
   feedforwardCounter = 0;
   for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
@@ -68,12 +70,19 @@ void ChargeControl_Task(void const *argument)
   osDelay(20);
   for (;;)
   {
+    if (upgradeMode)
+    {
+      ChargeControl_DisableOutputs();
+      ChargePWM_SetMosEnabled(0);
+      osDelay(100);
+      continue;
+    }
     // 每轮依次执行电池检测、输入确认、预充、内阻测试和正式充电
     ChargeControl_SetAllTargets(0);
     osDelay(200);
     ChargeControl_DisableOutputs();
 
-    while (!ChargeControl_AnyOutputValid())
+    while (!ChargeControl_AnyOutputValid() || upgradeMode)
     {
       ChargePWM_SetMosEnabled(0);
       osDelay(1200);
@@ -135,6 +144,13 @@ void ChargeControl_Update(void)
   uint8_t updateFeedforward;
   uint8_t phase;
 
+  if (upgradeMode)
+  {
+    ChargeControl_DisableOutputs();
+    ChargePWM_SetMosEnabled(0);
+    return;
+  }
+
   // 欠压和过流保护每轮执行，耗时较大的电压前馈每16轮更新一次
   feedforwardCounter++;
   updateFeedforward = feedforwardCounter >= 16;
@@ -189,6 +205,17 @@ void ChargeControl_Update(void)
       pwmOutput[phase] = (uint16_t)pwmFeedforward[phase];
     }
     ChargePWM_SetCompare(phase, pwmOutput[phase]);
+  }
+}
+
+void ChargeControl_SetUpgradeMode(uint8_t enabled)
+{ // OTA期间立即关闭并禁止所有充电输出
+  upgradeMode = enabled != 0;
+  if (upgradeMode)
+  {
+    ChargeControl_SetAllTargets(0);
+    ChargeControl_DisableOutputs();
+    ChargePWM_SetMosEnabled(0);
   }
 }
 
@@ -306,7 +333,8 @@ static void ChargeControl_SetAllTargets(int32_t current)
 
 static void ChargeControl_EnablePhase(uint8_t phase)
 { // 仅打开已通过电压检查的相
-  if ((phase < CHARGE_PHASE_COUNT) && ((outputMask & phaseMasks[phase]) != 0))
+  if (!upgradeMode && (phase < CHARGE_PHASE_COUNT) &&
+    ((outputMask & phaseMasks[phase]) != 0))
   {
     ChargePWM_EnablePhase(phase);
   }
@@ -361,7 +389,7 @@ static void ChargeControl_Precharge(void)
     for (count = 0; count < 1000; count++)
     {
       osDelay(25);
-      if (ChargeControl_AnyOutputHigh(5000))
+      if (upgradeMode || ChargeControl_AnyOutputHigh(5000))
       {
         breakFlag = 1;
         break;
@@ -378,7 +406,7 @@ static void ChargeControl_Precharge(void)
       break;
     }
   }
-  while (ChargeControl_AllOutputsBelowPrechargeLimit());
+  while (!upgradeMode && ChargeControl_AllOutputsBelowPrechargeLimit());
 }
 
 static void ChargeControl_TestResistance(void)
@@ -389,12 +417,19 @@ static void ChargeControl_TestResistance(void)
 
   for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
+    if (upgradeMode)
+    {
+      break;
+    }
     osDelay(1);
     beginVoltage = g_out_Volt[phase];
     ChargeControl_EnablePhase(phase);
     targetCurrent[phase] = CHARGE_TEST_CURRENT_MA;
     osDelay(10);
-    ChargePWM_EnableMain();
+    if (!upgradeMode)
+    {
+      ChargePWM_EnableMain();
+    }
     osDelay(800);
     resistanceVoltage = g_out_Volt[phase] - beginVoltage;
     ChargeControl_DisablePhase(phase);
@@ -442,13 +477,20 @@ static void ChargeControl_StartCharging(void)
 { // 打开有效相并启动TIM1主输出
   uint8_t phase;
 
+  if (upgradeMode)
+  {
+    return;
+  }
   for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     ChargeControl_EnablePhase(phase);
     osDelay(1);
   }
   osDelay(10);
-  ChargePWM_EnableMain();
+  if (!upgradeMode)
+  {
+    ChargePWM_EnableMain();
+  }
   osDelay(10);
 }
 

@@ -1,4 +1,5 @@
 #include "wireless_protocol.h"
+#include "wireless_upgrade.h"
 #include "charge_control.h"
 #include "Drivers/adc.h"
 #include "Drivers/si4463.h"
@@ -8,7 +9,8 @@
 
 /* Home信道固定长协议命令 */
 #define WIRELESS_COMMAND_INFO           0x07    // 信息查询主命令
-#define WIRELESS_COMMAND_BMS            0x03    // BMS控制主命令
+#define WIRELESS_COMMAND_UPGRADE        0x03    // 通用无线升级主命令
+#define WIRELESS_SUBCOMMAND_INFO        0x00    // 充电桩设备信息查询
 #define WIRELESS_SUBCOMMAND_STATUS      0x00    // 查询充电状态
 #define WIRELESS_SUBCOMMAND_SWITCH      0x06    // 切换工作信道
 
@@ -29,6 +31,7 @@ static uint8_t WirelessProtocol_AddressMatches(const uint8_t *frame);
 static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_ProcessVariable(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_SendHomeStatus(const uint8_t *request);
+static void WirelessProtocol_SendDeviceInfo(const uint8_t *request);
 static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8_t length);
 static uint8_t WirelessProtocol_GetFlags(void);
 static uint8_t WirelessProtocol_GetPhaseFlags(uint8_t phase);
@@ -52,6 +55,7 @@ void WirelessProtocol_Init(void)
   variableMode = 0;
   backHomeDelay = 0;
   lastValidCommunication = HAL_GetTick();
+  WirelessUpgrade_Init();
 }
 
 void WirelessProtocol_Process(void)
@@ -165,6 +169,7 @@ static uint8_t WirelessProtocol_AddressMatches(const uint8_t *frame)
 static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length)
 { // 处理Home状态查询和切信道命令
   uint8_t command;
+  uint8_t broadcast;
   uint8_t requestedChannel;
   uint8_t requestedVariableMode;
   uint8_t modeChanged;
@@ -173,21 +178,40 @@ static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t lengt
   {
     return 0;
   }
-  if (!WirelessProtocol_AddressMatches(frame))
+  broadcast = (frame[1] == 0xFF) && (frame[2] == 0xFF);
+  if (!WirelessProtocol_AddressMatches(frame) && !broadcast)
   {
     return 0;
   }
-  lastValidCommunication = HAL_GetTick();
   command = frame[0] >> 4;
+  if (broadcast)
+  { // 广播仅允许OTA数据帧，禁止广播触发其他设备操作
+    if ((command == WIRELESS_COMMAND_UPGRADE) &&
+      WirelessUpgrade_Process(frame, 1, currentChannel))
+    {
+      lastValidCommunication = HAL_GetTick();
+    }
+    return 0;
+  }
+  lastValidCommunication = HAL_GetTick();
   if ((command == WIRELESS_COMMAND_INFO) &&
     (frame[4] == WIRELESS_SUBCOMMAND_STATUS))
   {
     WirelessProtocol_SendHomeStatus(frame);
     return 0;
   }
-  else if ((command == WIRELESS_COMMAND_BMS) &&
-    (frame[4] == WIRELESS_SUBCOMMAND_SWITCH))
+  else if (command == WIRELESS_COMMAND_UPGRADE)
   {
+    if (frame[4] == WIRELESS_SUBCOMMAND_INFO)
+    {
+      WirelessProtocol_SendDeviceInfo(frame);
+      return 0;
+    }
+    if (frame[4] != WIRELESS_SUBCOMMAND_SWITCH)
+    {
+      WirelessUpgrade_Process(frame, 0, currentChannel);
+      return 0;
+    }
     // 先在原信道应答切换命令，发送成功后才改变射频信道和协议模式
     requestedChannel = frame[5];
     requestedVariableMode = frame[8] == 1;
@@ -230,6 +254,26 @@ static void WirelessProtocol_SendHomeStatus(const uint8_t *request)
   response[5] = WirelessProtocol_GetFlags();
   WirelessProtocol_PutU16(response + 6, WirelessProtocol_GetOutputVoltage());
   WirelessProtocol_PutS16(response + 8, WirelessProtocol_GetTotalCurrent());
+  SI4463_SendPacket(response, sizeof(response), currentChannel);
+}
+
+static void WirelessProtocol_SendDeviceInfo(const uint8_t *request)
+{ // 返回旧升级协议需要的设备、信道和版本信息
+  extern const uint16_t g_ver;
+  uint8_t response[SI4463_PACKET_LENGTH];
+
+  memcpy(response, request, 4);
+  memset(response + 4, 0, SI4463_PACKET_LENGTH - 4);
+  response[4] = WIRELESS_SUBCOMMAND_INFO;
+  response[5] = (uint8_t)wirelessAddress;
+  response[6] = (uint8_t)(wirelessAddress >> 8);
+  response[7] = (uint8_t)(wirelessAddress >> 16);
+  response[8] = (uint8_t)(wirelessAddress >> 24);
+  response[9] = homeChannel;
+  response[10] = currentChannel;
+  WirelessProtocol_PutU16(response + 11, BOARD_DEVICE_TYPE);
+  response[14] = (uint8_t)g_ver;
+  response[15] = (uint8_t)(g_ver >> 8);
   SI4463_SendPacket(response, sizeof(response), currentChannel);
 }
 

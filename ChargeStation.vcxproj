@@ -41,11 +41,17 @@
     <MCUPropertyListFile>$(ProjectDir)stm32.props</MCUPropertyListFile>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|VisualGDB'">
+    <ClCompile>
+      <Optimization>O2</Optimization>
+    </ClCompile>
     <Link>
       <ProduceRelocationRecords>true</ProduceRelocationRecords>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|VisualGDB'">
+    <ClCompile>
+      <Optimization>O2</Optimization>
+    </ClCompile>
     <Link>
       <ProduceRelocationRecords>true</ProduceRelocationRecords>
     </Link>
@@ -67,6 +73,7 @@
     <ClCompile Include="UserSource\Drivers\uart.c" />
     <ClCompile Include="UserSource\CAN_CMD.c" />
     <ClCompile Include="UserSource\wireless_protocol.c" />
+    <ClCompile Include="UserSource\wireless_upgrade.c" />
     <ClCompile Include="UserSource\registration.c" />
     <ClCompile Include="UserSource\registration_rsa.c" />
     <ClInclude Include="UserSource\charge_control.h" />
@@ -242,6 +249,7 @@
     <ClInclude Include="UserSource\Drivers\uart.h" />
     <ClInclude Include="UserSource\CAN_CMD.h" />
     <ClInclude Include="UserSource\wireless_protocol.h" />
+    <ClInclude Include="UserSource\wireless_upgrade.h" />
     <ClInclude Include="UserSource\registration.h" />
     <ClInclude Include="UserSource\registration_rsa.h" />
     <ClInclude Include="$(BSP_ROOT)\STM32F1xxxx\CMSIS_HAL\Include\core_sc300.h" />

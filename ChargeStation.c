@@ -41,8 +41,8 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-const uint16_t g_ver __attribute__((section(".appinfo"))) = BOARD_VERSION;
-const uint16_t g_dev_type __attribute__((section(".appinfo"))) = BOARD_DEVICE_TYPE;
+const uint16_t g_ver __attribute__((section(".appversion"))) = BOARD_VERSION;
+const uint16_t g_dev_type __attribute__((section(".appdevtype"))) = BOARD_DEVICE_TYPE;
 static volatile uint8_t wirelessInitFailed;
 
 /* Private function prototypes -----------------------------------------------*/
