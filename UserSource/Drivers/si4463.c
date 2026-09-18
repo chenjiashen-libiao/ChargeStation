@@ -6,7 +6,6 @@
 #include <string.h>
 
 /* SI4463命令等待及包处理中断标志 */
-#define SI4463_WAIT_ATTEMPTS            20    // CTS和发送完成最多轮询20次
 #define SI4463_PACKET_RX_PENDING        0x10  // 收到完整数据包
 #define SI4463_PACKET_CRC_ERROR         0x08  // 射频包CRC错误
 #define SI4463_PACKET_TX_COMPLETE       0x20  // 数据包发送完成
@@ -69,6 +68,7 @@ static uint8_t SI4463_TakeInterrupt(void);
 uint8_t SI4463_Init(void)
 { // 初始化SI4463并进入Home信道固定长接收
   uint8_t status[9];
+  uint8_t attempt;
 
   memset(&si4463Info, 0, sizeof(si4463Info));
   homeChannel = 0;
@@ -92,10 +92,17 @@ uint8_t SI4463_Init(void)
     txPower = *(const uint8_t *)BOARD_RF_TX_POWER_STORAGE;
   }
   SI4463_InitIo();
-  osDelay(5);
-  if (!SI4463_ReadPartInfo() ||
-    ((si4463Info.PartNumber & 0xFFF0) != 0x4460) ||
-    !SI4463_LoadConfig(configTable))
+  osDelay(100);                        // 等待无线模块电源和晶振稳定
+  for (attempt = 0; attempt < 3; attempt++)
+  { // 上电较慢时仅重试安全的只读识别命令
+    if (SI4463_ReadPartInfo() &&
+      ((si4463Info.PartNumber & 0xFFF0) == 0x4460))
+    {
+      break;
+    }
+    osDelay(20);                       // 芯片识别重试间隔
+  }
+  if ((attempt == 3) || !SI4463_LoadConfig(configTable))
   {
     return 0;
   }
@@ -447,7 +454,7 @@ static uint8_t SI4463_WaitCts(void)
   uint8_t attempt;
   uint8_t cts;
 
-  for (attempt = 0; attempt < SI4463_WAIT_ATTEMPTS; attempt++)
+  for (attempt = 0; attempt < 50; attempt++)  // CTS最多等待约50ms
   {
     SI4463_Select();
     SI4463_ExchangeByte(READ_CMD_BUFF);
@@ -666,7 +673,7 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
   {
     return 0;
   }
-  for (attempts = 0; attempts < SI4463_WAIT_ATTEMPTS; attempts++)
+  for (attempts = 0; attempts < 20; attempts++)  // 最多等待约20ms发送完成
   {
     osDelay(1);
     if ((interruptPending != 0) ||
