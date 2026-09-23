@@ -43,6 +43,7 @@ static void SI4463_SetMosiMode(void);
 static void SI4463_SetIrqMode(void);
 static void SI4463_Select(void);
 static void SI4463_Deselect(void);
+__STATIC_INLINE void SI4463_SpiDelay(void);
 static uint8_t SI4463_ExchangeByte(uint8_t txData);
 static uint8_t SI4463_WaitCts(void);
 static uint8_t SI4463_Command(const uint8_t *command, uint8_t commandSize);
@@ -433,6 +434,14 @@ static void SI4463_Deselect(void)
   }
 }
 
+__STATIC_INLINE void SI4463_SpiDelay(void)
+{ // 固定模拟SPI边沿间隔，不受编译优化影响
+  __NOP();
+  __NOP();
+  __NOP();
+  __NOP();
+}
+
 static uint8_t SI4463_ExchangeByte(uint8_t txData)
 { // 模拟SPI收发一个字节，CPOL=0、CPHA=1、MSB先行
   uint8_t bit;
@@ -450,13 +459,16 @@ static uint8_t SI4463_ExchangeByte(uint8_t txData)
     {
       gpio->BRR = BOARD_SI4463_MOSI_IRQ_PIN;
     }
+    SI4463_SpiDelay();
     gpio->BSRR = BOARD_SI4463_SCK_PIN;
+    SI4463_SpiDelay();
     rxData <<= 1;
     if ((gpio->IDR & BOARD_SI4463_MISO_PIN) != 0)
     {
       rxData |= 1;
     }
     gpio->BRR = BOARD_SI4463_SCK_PIN;
+    SI4463_SpiDelay();
     txData <<= 1;
   }
   return rxData;
