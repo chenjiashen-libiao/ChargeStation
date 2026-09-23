@@ -177,8 +177,11 @@ static void SI4463_Thread(void const *argument)
   WirelessProtocol_Init();
   for (;;)
   {
+    SI4463_SetSharedLed(0);              // 释放PB5，留出无线IRQ检测窗口
+    osDelay(1);
     SI4463_Process();
     WirelessProtocol_Process();
+    SI4463_SetSharedLed(1);              // SPI空闲期间拉低PB5点亮无线板LED
     osDelay(1);
   }
 }

@@ -27,5 +27,6 @@ uint8_t SI4463_SetFixedMode(uint8_t channel);
 uint8_t SI4463_SetVariableMode(uint8_t channel);
 uint8_t SI4463_EnterReceive(void);
 void SI4463_Process(void);
+void SI4463_SetSharedLed(uint8_t enabled);
 
 #endif

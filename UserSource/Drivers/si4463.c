@@ -344,6 +344,19 @@ void SI4463_Process(void)
   }
 }
 
+void SI4463_SetSharedLed(uint8_t enabled)
+{ // 分时复用PB5，在不影响SPI的空闲阶段控制低有效LED
+  if (enabled)
+  {
+    SI4463_SetMosiMode();
+    BOARD_SI4463_GPIO_PORT->BRR = BOARD_SI4463_MOSI_IRQ_PIN;
+  }
+  else
+  {
+    SI4463_SetIrqMode();
+  }
+}
+
 static void SI4463_InitIo(void)
 { // 初始化与参考工程一致的模拟SPI和NIRQ引脚
   GPIO_InitTypeDef gpioInit = {0};
