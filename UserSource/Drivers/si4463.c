@@ -55,6 +55,7 @@ static uint8_t SI4463_ConfigGpio(void);
 static uint8_t SI4463_SetFrequency(void);
 static uint8_t SI4463_SetTxPower(void);
 static uint8_t SI4463_ChangeState(uint8_t state);
+static uint8_t SI4463_ReadDeviceState(uint8_t *state);
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status);
 static uint8_t SI4463_ResetRxFifo(void);
 static uint8_t SI4463_ResetTxFifo(void);
@@ -298,6 +299,8 @@ void SI4463_Process(void)
   uint8_t status[9];
   uint8_t pending;
   uint8_t frameReceived = 0;
+  uint8_t state;
+  static uint32_t lastRxCheckTick;
 
   if (!si4463Info.Ready)
   {
@@ -310,6 +313,17 @@ void SI4463_Process(void)
     if (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
       BOARD_SI4463_MOSI_IRQ_PIN) != GPIO_PIN_RESET)
     {
+      if ((uint32_t)(HAL_GetTick() - lastRxCheckTick) >= 50)
+      {
+        lastRxCheckTick = HAL_GetTick();
+        if (SI4463_ReadDeviceState(&state) && (state != 8) &&
+          (interruptPending == 0) &&
+          (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
+            BOARD_SI4463_MOSI_IRQ_PIN) != GPIO_PIN_RESET))
+        {
+          SI4463_StartReceive();
+        }
+      }
       return;
     }
   }
@@ -338,6 +352,10 @@ void SI4463_Process(void)
       receivedFramePending = 1;
       frameReceived = 1;
     }
+  }
+  if ((status[3] & SI4463_PACKET_TX_COMPLETE) != 0)
+  {
+    SI4463_ResetTxFifo();
   }
   if (!frameReceived)
   {
@@ -375,8 +393,8 @@ static void SI4463_InitIo(void)
 static void SI4463_SetMosiMode(void)
 { // SPI事务期间将PB5切换为MOSI输出
   // PB5复用为MOSI和低有效NIRQ，切换输出前必须屏蔽并清除对应EXTI
-  HAL_NVIC_DisableIRQ(BOARD_SI4463_IRQN);
   EXTI->IMR &= ~BOARD_SI4463_MOSI_IRQ_PIN;
+  HAL_NVIC_DisableIRQ(BOARD_SI4463_IRQN);
   __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_MOSI_IRQ_PIN;
   MODIFY_REG(BOARD_SI4463_GPIO_PORT->CRL, SI4463_MOSI_CONFIG_MASK,
@@ -385,14 +403,11 @@ static void SI4463_SetMosiMode(void)
 
 static void SI4463_SetIrqMode(void)
 { // SPI空闲期间将PB5恢复为低有效NIRQ
-  uint8_t wasPending = (__HAL_GPIO_EXTI_GET_IT(BOARD_SI4463_MOSI_IRQ_PIN) != RESET);
-
   // 恢复输入后重新检查引脚电平，补记SPI事务期间到达的无线事件
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_MOSI_IRQ_PIN;
   MODIFY_REG(BOARD_SI4463_GPIO_PORT->CRL, SI4463_MOSI_CONFIG_MASK,
     SI4463_MOSI_INPUT_CONFIG);
-  __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
-  if (wasPending ||
+  if ((__HAL_GPIO_EXTI_GET_IT(BOARD_SI4463_MOSI_IRQ_PIN) == RESET) &&
     ((BOARD_SI4463_GPIO_PORT->IDR & BOARD_SI4463_MOSI_IRQ_PIN) == 0))
   {
     interruptPending = 1;
@@ -466,7 +481,7 @@ static uint8_t SI4463_WaitCts(void)
   uint8_t attempt;
   uint8_t cts;
 
-  for (attempt = 0; attempt < 50; attempt++)  // CTS最多等待约50ms
+  for (attempt = 0; attempt < 20; attempt++)
   {
     SI4463_Select();
     SI4463_ExchangeByte(READ_CMD_BUFF);
@@ -476,7 +491,10 @@ static uint8_t SI4463_WaitCts(void)
     {
       return 1;
     }
-    osDelay(1);
+    if (attempt < 19)
+    {
+      osDelay(1);
+    }
   }
   return 0;
 }
@@ -602,6 +620,20 @@ static uint8_t SI4463_ChangeState(uint8_t state)
 { // 切换SI4463内部状态
   uint8_t command[2] = {CHANGE_STATE, state};
   return SI4463_Command(command, sizeof(command));
+}
+
+static uint8_t SI4463_ReadDeviceState(uint8_t *state)
+{
+  uint8_t command = REQUEST_DEVICE_STATE;
+  uint8_t response[3];
+
+  if (!SI4463_Command(&command, 1) ||
+    !SI4463_ReadResponse(response, sizeof(response)))
+  {
+    return 0;
+  }
+  *state = response[1] & 0x0F;
+  return 1;
 }
 
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status)
