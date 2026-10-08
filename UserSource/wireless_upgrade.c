@@ -125,14 +125,14 @@ uint8_t WirelessUpgrade_Process(const uint8_t *request, uint8_t broadcast,
         return 1;
       }
       missingAddress = WirelessUpgrade_FindMissingAddress();
-      if (missingAddress == 0)
-      {
-        calculatedChecksum = WirelessUpgrade_CalculateChecksum();
-      }
       memcpy(response, request, sizeof(response));
       memset(response + 5, 0, sizeof(response) - 5);
       WirelessUpgrade_WriteU32(response + 5, missingAddress);
       SI4463_SendPacket(response, sizeof(response), channel);
+      if (missingAddress == 0)
+      {
+        calculatedChecksum = WirelessUpgrade_CalculateChecksum();
+      }
       return 1;
 
     case UPGRADE_COMMAND_CHECK:
