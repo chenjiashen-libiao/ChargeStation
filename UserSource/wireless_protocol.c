@@ -190,6 +190,7 @@ static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t lengt
       WirelessUpgrade_Process(frame, 1, currentChannel))
     {
       lastValidCommunication = HAL_GetTick();
+      return frame[4] == 0x0A;
     }
     return 0;
   }
@@ -209,8 +210,8 @@ static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t lengt
     }
     if (frame[4] != WIRELESS_SUBCOMMAND_SWITCH)
     {
-      WirelessUpgrade_Process(frame, 0, currentChannel);
-      return 0;
+      uint8_t handled = WirelessUpgrade_Process(frame, 0, currentChannel);
+      return (frame[4] == 0x0A) && handled;
     }
     // 先在原信道应答切换命令，发送成功后才改变射频信道和协议模式
     requestedChannel = frame[5];

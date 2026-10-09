@@ -68,6 +68,10 @@ uint8_t WirelessUpgrade_Process(const uint8_t *request, uint8_t broadcast,
     if ((command == UPGRADE_COMMAND_WRITE) && broadcastWriteEnabled &&
       upgradeReady)
     {
+      if (!SI4463_EnterReceive())
+      {
+        return 0;
+      }
       WirelessUpgrade_WriteFrame(request);
       return 1;
     }
@@ -112,7 +116,11 @@ uint8_t WirelessUpgrade_Process(const uint8_t *request, uint8_t broadcast,
       return 1;
 
     case UPGRADE_COMMAND_WRITE:
-      WirelessUpgrade_SendStatus(request, channel, 1);
+      if (!WirelessUpgrade_SendStatus(request, channel, 1) ||
+        !SI4463_EnterReceive())
+      {
+        return 0;
+      }
       if (broadcastWriteEnabled && upgradeReady)
       {
         WirelessUpgrade_WriteFrame(request);
@@ -153,12 +161,8 @@ uint8_t WirelessUpgrade_Process(const uint8_t *request, uint8_t broadcast,
       {
         status = 0;
       }
-      if ((status == 1) && (WirelessUpgrade_WriteBootInfo() != HAL_OK))
-      {
-        status = 0;
-      }
       WirelessUpgrade_SendStatus(request, channel, status);
-      if (status == 1)
+      if ((status == 1) && (WirelessUpgrade_WriteBootInfo() == HAL_OK))
       {
         osDelay(20);
         NVIC_SystemReset();
@@ -280,13 +284,29 @@ static uint32_t WirelessUpgrade_FindMissingAddress(void)
 { // 返回首个缺失8字节帧的地址，全部收齐返回0
   uint32_t frameCount = (imageLength + UPGRADE_FRAME_SIZE - 1U) /
     UPGRADE_FRAME_SIZE;
+  uint32_t bitmapLength = (frameCount + 7U) / 8U;
+  uint32_t bitmapIndex;
   uint32_t frameIndex;
+  uint8_t missingBits;
 
-  for (frameIndex = 0; frameIndex < frameCount; frameIndex++)
+  for (bitmapIndex = 0; bitmapIndex < bitmapLength; bitmapIndex++)
   {
-    if ((writtenFrames[frameIndex / 8] & (1U << (frameIndex % 8))) != 0)
+    missingBits = writtenFrames[bitmapIndex];
+    if (missingBits == 0)
     {
-      return imageAddress + frameIndex * UPGRADE_FRAME_SIZE;
+      continue;
+    }
+    for (frameIndex = 0; frameIndex < 8U; frameIndex++)
+    {
+      if ((missingBits & (1U << frameIndex)) != 0)
+      {
+        uint32_t missingFrame = bitmapIndex * 8U + frameIndex;
+        if (missingFrame < frameCount)
+        {
+          return imageAddress + missingFrame * UPGRADE_FRAME_SIZE;
+        }
+        break;
+      }
     }
   }
   return 0;

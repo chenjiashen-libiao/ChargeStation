@@ -442,6 +442,10 @@ __STATIC_INLINE void SI4463_SpiDelay(void)
   __NOP();
   __NOP();
   __NOP();
+  __NOP();
+  __NOP();
+  __NOP();
+  __NOP();
 }
 
 static uint8_t SI4463_ExchangeByte(uint8_t txData)
