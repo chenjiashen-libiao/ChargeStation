@@ -55,7 +55,6 @@ static uint8_t SI4463_ConfigGpio(void);
 static uint8_t SI4463_SetFrequency(void);
 static uint8_t SI4463_SetTxPower(void);
 static uint8_t SI4463_ChangeState(uint8_t state);
-static uint8_t SI4463_ReadDeviceState(uint8_t *state);
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status);
 static uint8_t SI4463_ResetRxFifo(void);
 static uint8_t SI4463_ResetTxFifo(void);
@@ -299,8 +298,6 @@ void SI4463_Process(void)
   uint8_t status[9];
   uint8_t pending;
   uint8_t frameReceived = 0;
-  uint8_t state;
-  static uint32_t lastRxCheckTick;
 
   if (!si4463Info.Ready)
   {
@@ -313,17 +310,6 @@ void SI4463_Process(void)
     if (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
       BOARD_SI4463_MOSI_IRQ_PIN) != GPIO_PIN_RESET)
     {
-      if ((uint32_t)(HAL_GetTick() - lastRxCheckTick) >= 50)
-      {
-        lastRxCheckTick = HAL_GetTick();
-        if (SI4463_ReadDeviceState(&state) && (state != 8) &&
-          (interruptPending == 0) &&
-          (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
-            BOARD_SI4463_MOSI_IRQ_PIN) != GPIO_PIN_RESET))
-        {
-          SI4463_StartReceive();
-        }
-      }
       return;
     }
   }
@@ -624,20 +610,6 @@ static uint8_t SI4463_ChangeState(uint8_t state)
 { // 切换SI4463内部状态
   uint8_t command[2] = {CHANGE_STATE, state};
   return SI4463_Command(command, sizeof(command));
-}
-
-static uint8_t SI4463_ReadDeviceState(uint8_t *state)
-{
-  uint8_t command = REQUEST_DEVICE_STATE;
-  uint8_t response[3];
-
-  if (!SI4463_Command(&command, 1) ||
-    !SI4463_ReadResponse(response, sizeof(response)))
-  {
-    return 0;
-  }
-  *state = response[1] & 0x0F;
-  return 1;
 }
 
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status)
