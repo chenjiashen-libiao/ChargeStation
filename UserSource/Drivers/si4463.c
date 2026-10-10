@@ -25,6 +25,8 @@ static const uint8_t configTable[] = RADIO_CONFIGURATION_DATA_ARRAY;
 static const uint8_t config902Table[] = RADIO902_CONFIGURATION_DATA_ARRAY;
 
 static SI4463_Info si4463Info;
+osSemaphoreDef(si4463InterruptSemaphore);
+static osSemaphoreId interruptSemaphore;
 static volatile uint8_t interruptPending;
 static volatile uint8_t receivedFramePending;
 static uint8_t receivedFrame[SI4463_VARIABLE_MAX_PAYLOAD];
@@ -71,6 +73,12 @@ uint8_t SI4463_Init(void)
   uint8_t status[9];
   uint8_t attempt;
 
+  interruptSemaphore = osSemaphoreCreate(osSemaphore(si4463InterruptSemaphore), 1);
+  if (interruptSemaphore == NULL)
+  {
+    return 0;
+  }
+  osSemaphoreWait(interruptSemaphore, 0);
   memset(&si4463Info, 0, sizeof(si4463Info));
   homeChannel = 0;
   txPower = 0x7F;
@@ -160,7 +168,7 @@ const SI4463_Info *SI4463_GetInfo(void)
 }
 
 uint8_t SI4463_SendPacket(const uint8_t *data, uint8_t length, uint8_t channel)
-{ // 发送固定长度无线数据并恢复接收
+{ // 发送固定长度无线数据，接收由调用方恢复
   if (!si4463Info.Ready || (data == NULL) || (length != SI4463_PACKET_LENGTH))
   {
     return 0;
@@ -197,7 +205,10 @@ uint8_t SI4463_SendVariablePacket(const uint8_t *data, uint8_t length, uint8_t c
     return 0;
   }
   result = SI4463_Transmit(fifo, field2Length + 1, channel, 0x60);
-  SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, SI4463_VARIABLE_MAX_FIELD2);
+  if (!SI4463_SetProperty(PKT_FIELD_2_LENGTH_7_0, SI4463_VARIABLE_MAX_FIELD2))
+  {
+    return 0;
+  }
   return result;
 }
 
@@ -318,6 +329,11 @@ void SI4463_Process(void)
     SI4463_StartReceive();
     return;
   }
+  if ((status[3] & (SI4463_PACKET_RX_PENDING | SI4463_PACKET_CRC_ERROR |
+    SI4463_PACKET_TX_COMPLETE)) == 0)
+  {
+    return;
+  }
   if (((status[3] & SI4463_PACKET_RX_PENDING) != 0) &&
     ((status[3] & SI4463_PACKET_CRC_ERROR) == 0))
   {
@@ -330,9 +346,8 @@ void SI4463_Process(void)
         frameReceived = 1;
       }
     }
-    else if (SI4463_ReadFixedPacket(receivedFrame))
+    else if (SI4463_ReadFixedPacket(receivedFrame) && SI4463_ChangeState(5))
     {
-      SI4463_ChangeState(5);
       receivedFrameLength = SI4463_PACKET_LENGTH;
       receivedFrameVariable = 0;
       receivedFramePending = 1;
@@ -365,7 +380,7 @@ static void SI4463_InitIo(void)
   HAL_GPIO_Init(BOARD_SI4463_GPIO_PORT, &gpioInit);
   gpioInit.Pin = BOARD_SI4463_MISO_PIN;
   gpioInit.Mode = GPIO_MODE_INPUT;
-  gpioInit.Pull = GPIO_PULLUP;
+  gpioInit.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(BOARD_SI4463_GPIO_PORT, &gpioInit);
   gpioInit.Pin = BOARD_SI4463_MOSI_IRQ_PIN;
   gpioInit.Mode = GPIO_MODE_IT_FALLING;
@@ -393,10 +408,11 @@ static void SI4463_SetIrqMode(void)
   BOARD_SI4463_GPIO_PORT->BSRR = BOARD_SI4463_MOSI_IRQ_PIN;
   MODIFY_REG(BOARD_SI4463_GPIO_PORT->CRL, SI4463_MOSI_CONFIG_MASK,
     SI4463_MOSI_INPUT_CONFIG);
-  if ((__HAL_GPIO_EXTI_GET_IT(BOARD_SI4463_MOSI_IRQ_PIN) == RESET) &&
-    ((BOARD_SI4463_GPIO_PORT->IDR & BOARD_SI4463_MOSI_IRQ_PIN) == 0))
+  __HAL_GPIO_EXTI_CLEAR_IT(BOARD_SI4463_MOSI_IRQ_PIN);
+  if ((BOARD_SI4463_GPIO_PORT->IDR & BOARD_SI4463_MOSI_IRQ_PIN) == 0)
   {
     interruptPending = 1;
+    EXTI->SWIER |= BOARD_SI4463_MOSI_IRQ_PIN;
   }
   EXTI->IMR |= BOARD_SI4463_MOSI_IRQ_PIN;
   HAL_NVIC_EnableIRQ(BOARD_SI4463_IRQN);
@@ -435,7 +451,7 @@ __STATIC_INLINE void SI4463_SpiDelay(void)
 }
 
 static uint8_t SI4463_ExchangeByte(uint8_t txData)
-{ // 模拟SPI收发一个字节，CPOL=0、CPHA=1、MSB先行
+{ // 模拟SPI收发一个字节，时钟空闲低，上升沿后采样，MSB先行
   uint8_t bit;
   uint8_t rxData = 0;
   GPIO_TypeDef *gpio = BOARD_SI4463_GPIO_PORT;
@@ -615,22 +631,12 @@ static uint8_t SI4463_ChangeState(uint8_t state)
 static uint8_t SI4463_ReadInterruptStatus(uint8_t *status)
 { // 读取并清除SI4463全部中断状态
   uint8_t command[4] = {GET_INT_STATUS, 0, 0, 0};
-  uint8_t index;
-  uint8_t allOnes = 1;
 
   if (!SI4463_Command(command, sizeof(command)) || !SI4463_ReadResponse(status, 9))
   {
     return 0;
   }
-  for (index = 0; index < 9; index++)
-  {
-    if (status[index] != 0xFF)
-    {
-      allOnes = 0;
-      break;
-    }
-  }
-  return !allOnes && (status[3] != 0xFF);
+  return (status[0] == 0xFF) && (status[3] != 0xFF);
 }
 
 static uint8_t SI4463_ResetRxFifo(void)
@@ -669,7 +675,8 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
 { // 写入TX FIFO、启动发送并在完成后返回READY状态
   uint8_t command[5];
   uint8_t status[9];
-  uint8_t attempts;
+  uint32_t startTick;
+  uint32_t elapsed;
   uint8_t index;
   uint8_t completed = 0;
 
@@ -689,13 +696,17 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
   command[2] = condition;
   command[3] = 0;
   command[4] = length;
+  SI4463_TakeInterrupt();
+  while (osSemaphoreWait(interruptSemaphore, 0) == osOK)
+  {
+  }
   if (!SI4463_Command(command, sizeof(command)))
   {
     return 0;
   }
-  for (attempts = 0; attempts < 20; attempts++)  // 最多等待约20ms发送完成
+  startTick = HAL_GetTick();
+  while ((elapsed = HAL_GetTick() - startTick) < 20)
   {
-    osDelay(1);
     if ((interruptPending != 0) ||
       (HAL_GPIO_ReadPin(BOARD_SI4463_GPIO_PORT,
         BOARD_SI4463_MOSI_IRQ_PIN) == GPIO_PIN_RESET))
@@ -708,9 +719,17 @@ static uint8_t SI4463_Transmit(const uint8_t *data, uint8_t length,
         break;
       }
     }
+    elapsed = HAL_GetTick() - startTick;
+    if ((elapsed >= 20) ||
+      (osSemaphoreWait(interruptSemaphore, 20 - elapsed) != osOK))
+    {
+      break;
+    }
   }
-  SI4463_ChangeState(3);
-  SI4463_ReadInterruptStatus(status);
+  if (!SI4463_ChangeState(3) || !SI4463_ReadInterruptStatus(status))
+  {
+    return 0;
+  }
   return completed;
 }
 
@@ -763,7 +782,6 @@ static uint8_t SI4463_ReadVariablePacket(uint8_t *data, uint8_t *length)
       (SI4463_VARIABLE_MIN_PAYLOAD + SI4463_VARIABLE_CRC_SIZE)) ||
     (field2Length > SI4463_VARIABLE_MAX_FIELD2))
   {
-    SI4463_ResetRxFifo();
     return 0;
   }
   receivedCrc = (uint32_t)fifo[1] |
@@ -773,7 +791,6 @@ static uint8_t SI4463_ReadVariablePacket(uint8_t *data, uint8_t *length)
   if ((calculatedCrc & 0x00FFFFFF) != receivedCrc)
   {
     *length = 0;
-    SI4463_ResetRxFifo();
     return 0;
   }
   memcpy(data, &fifo[4], *length);
@@ -833,5 +850,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpioPin)
   if (gpioPin == BOARD_SI4463_MOSI_IRQ_PIN)
   {
     interruptPending = 1;
+    osSemaphoreRelease(interruptSemaphore);
   }
 }
