@@ -17,8 +17,8 @@
 /* 工作信道WifiV2状态协议 */
 #define WIRELESS_WIFI_COMMAND_STATUS    0x7000  // 完整状态查询命令
 #define WIRELESS_WORK_TIMEOUT_MS        10000   // 无有效通信后返回Home的时间
-#define WIRELESS_STATUS_DATA_LENGTH     33      // 状态内容字节数
-#define WIRELESS_RESPONSE_LENGTH        45      // 完整应答帧字节数
+#define WIRELESS_STATUS_DATA_LENGTH     35      // 状态内容字节数，末尾附带MCU温度
+#define WIRELESS_RESPONSE_LENGTH        47      // 完整应答帧字节数
 
 static uint8_t currentChannel;
 static uint8_t variableMode;
@@ -320,7 +320,7 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
   memset(response, 0, sizeof(response));
   response[0] = 0xAA;
   response[1] = request[1] & 0xF0;
-  response[2] = 40;
+  response[2] = 42;
   memcpy(response + 5, request + 5, 5);
   response[10] = 0x0A;
   response[11] = WIRELESS_STATUS_DATA_LENGTH;
@@ -339,7 +339,8 @@ static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8
       WirelessProtocol_ClampU16(ChargeControl_GetTargetCurrent(phase) / 10));
     phaseData[8] = WirelessProtocol_GetPhaseFlags(phase);
   }
-  checksum = WirelessProtocol_Checksum(response + 5, 40);
+  WirelessProtocol_PutS16(statusData + 33, (int16_t)g_temp);
+  checksum = WirelessProtocol_Checksum(response + 5, 42);
   response[3] = (uint8_t)checksum;
   response[4] = (uint8_t)(checksum >> 8);
   if (SI4463_SendVariablePacket(response, sizeof(response), currentChannel))

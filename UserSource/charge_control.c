@@ -453,14 +453,14 @@ static void ChargeControl_TestResistance(void)
     }
     else
     {
-      if (g_temp <= 10)
-      {
-        targetCurrent[phase] -= 15000;
-      }
-      if (g_temp <= 0)
-      {
-        targetCurrent[phase] -= 5000;
-      }
+      // if (g_temp <= 10)
+      // {
+      //   targetCurrent[phase] -= 15000;
+      // }
+      // if (g_temp <= 0)
+      // {
+      //   targetCurrent[phase] -= 5000;
+      // }
       if (targetCurrent[phase] > 30000)
       {
         targetCurrent[phase] = 30000;
