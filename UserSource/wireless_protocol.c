@@ -12,6 +12,7 @@
 #define WIRELESS_COMMAND_UPGRADE        0x03    // 通用无线升级主命令
 #define WIRELESS_SUBCOMMAND_INFO        0x00    // 充电桩设备信息查询
 #define WIRELESS_SUBCOMMAND_STATUS      0x00    // 查询充电状态
+#define WIRELESS_SUBCOMMAND_PHASE_DATA  0x02    // 查询三相详细状态
 #define WIRELESS_SUBCOMMAND_SWITCH      0x06    // 切换工作信道
 
 /* 工作信道WifiV2状态协议 */
@@ -31,6 +32,7 @@ static uint8_t WirelessProtocol_AddressMatches(const uint8_t *frame);
 static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_ProcessVariable(const uint8_t *frame, uint8_t length);
 static void WirelessProtocol_SendHomeStatus(const uint8_t *request);
+static void WirelessProtocol_SendPhaseData(const uint8_t *request, uint8_t page);
 static void WirelessProtocol_SendDeviceInfo(const uint8_t *request);
 static uint8_t WirelessProtocol_SendVariableStatus(const uint8_t *request, uint8_t length);
 static uint8_t WirelessProtocol_GetFlags(void);
@@ -42,6 +44,11 @@ static void WirelessProtocol_PutS16(uint8_t *buffer, int16_t value);
 static uint16_t WirelessProtocol_Checksum(const uint8_t *data, uint16_t length);
 static uint16_t WirelessProtocol_ClampU16(int32_t value);
 static int16_t WirelessProtocol_Current10mA(int32_t value);
+static void WirelessProtocol_PackBits(uint8_t *buffer, uint8_t bitOffset,
+  uint16_t value, uint8_t bitCount);
+static uint16_t WirelessProtocol_QuantizeVoltage10(int32_t millivolts);
+static uint16_t WirelessProtocol_QuantizeTargetCurrent10(int32_t milliamps);
+static uint16_t WirelessProtocol_QuantizeCurrent10(int32_t milliamps);
 
 void WirelessProtocol_Init(void)
 { // 初始化无线协议状态
@@ -201,6 +208,15 @@ static uint8_t WirelessProtocol_ProcessFixed(const uint8_t *frame, uint8_t lengt
     WirelessProtocol_SendHomeStatus(frame);
     return 0;
   }
+  else if ((command == WIRELESS_COMMAND_INFO) &&
+    (frame[4] == WIRELESS_SUBCOMMAND_PHASE_DATA))
+  {
+    static uint8_t nextPhaseDataPage = 0;
+
+    WirelessProtocol_SendPhaseData(frame, nextPhaseDataPage);
+    nextPhaseDataPage ^= 1;
+    return 0;
+  }
   else if (command == WIRELESS_COMMAND_UPGRADE)
   {
     if (frame[4] == WIRELESS_SUBCOMMAND_INFO)
@@ -256,6 +272,114 @@ static void WirelessProtocol_SendHomeStatus(const uint8_t *request)
   WirelessProtocol_PutU16(response + 6, WirelessProtocol_GetOutputVoltage());
   WirelessProtocol_PutS16(response + 8, WirelessProtocol_GetTotalCurrent());
   SI4463_SendPacket(response, sizeof(response), currentChannel);
+}
+
+static void WirelessProtocol_SendPhaseData(const uint8_t *request, uint8_t page)
+{ // 每次调用发送一页固定16字节三相状态
+  uint8_t response[SI4463_PACKET_LENGTH];
+  uint8_t *data;
+  uint8_t phase;
+  uint8_t bitOffset = 0;
+
+  memcpy(response, request, 4);
+  memset(response + 4, 0, SI4463_PACKET_LENGTH - 4);
+  response[4] = WIRELESS_SUBCOMMAND_PHASE_DATA;
+  response[5] = page;
+  data = response + 6;
+
+  if (page == 0)
+  {
+    for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+    {
+      WirelessProtocol_PackBits(data, bitOffset,
+        WirelessProtocol_QuantizeVoltage10(g_out_Volt[phase]), 10);
+      bitOffset += 10;
+    }
+    for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+    {
+      WirelessProtocol_PackBits(data, bitOffset,
+        WirelessProtocol_QuantizeCurrent10(g_I[phase]), 10);
+      bitOffset += 10;
+    }
+    WirelessProtocol_PackBits(data, bitOffset, WirelessProtocol_GetFlags(), 8);
+    bitOffset += 8;
+    WirelessProtocol_PackBits(data, bitOffset, (uint8_t)g_temp, 8);
+  }
+  else
+  {
+    for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+    {
+      WirelessProtocol_PackBits(data, bitOffset,
+        WirelessProtocol_QuantizeVoltage10(g_intvolt[phase]), 10);
+      bitOffset += 10;
+    }
+    for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+    {
+      WirelessProtocol_PackBits(data, bitOffset,
+        WirelessProtocol_QuantizeTargetCurrent10(
+          ChargeControl_GetTargetCurrent(phase)), 10);
+      bitOffset += 10;
+    }
+    for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+    {
+      WirelessProtocol_PackBits(data, bitOffset,
+        WirelessProtocol_GetPhaseFlags(phase), 5);
+      bitOffset += 5;
+    }
+  }
+
+  SI4463_SendPacket(response, sizeof(response), currentChannel);
+}
+
+static void WirelessProtocol_PackBits(uint8_t *buffer, uint8_t bitOffset,
+  uint16_t value, uint8_t bitCount)
+{ // 按低位优先写入连续位字段
+  uint8_t bit;
+
+  for (bit = 0; bit < bitCount; bit++)
+  {
+    if ((value & (1U << bit)) != 0)
+    {
+      uint8_t targetBit = bitOffset + bit;
+      buffer[targetBit / 8] |= (uint8_t)(1U << (targetBit % 8));
+    }
+  }
+}
+
+static uint16_t WirelessProtocol_QuantizeVoltage10(int32_t millivolts)
+{ // 电压按10mV/LSB量化到无符号10位
+  if (millivolts < 0)
+  {
+    return 0;
+  }
+  millivolts = (millivolts + 5) / 10;
+  return (millivolts > 1023) ? 1023 : (uint16_t)millivolts;
+}
+
+static uint16_t WirelessProtocol_QuantizeTargetCurrent10(int32_t milliamps)
+{ // 目标电流按200mA/LSB量化到无符号10位
+  if (milliamps < 0)
+  {
+    return 0;
+  }
+  milliamps = (milliamps + 100) / 200;
+  return (milliamps > 1023) ? 1023 : (uint16_t)milliamps;
+}
+
+static uint16_t WirelessProtocol_QuantizeCurrent10(int32_t milliamps)
+{ // 实际电流按200mA/LSB量化到有符号10位
+  milliamps = (milliamps >= 0)
+    ? (milliamps + 100) / 200
+    : (milliamps - 100) / 200;
+  if (milliamps > 511)
+  {
+    milliamps = 511;
+  }
+  else if (milliamps < -512)
+  {
+    milliamps = -512;
+  }
+  return (uint16_t)milliamps & 0x03FF;
 }
 
 static void WirelessProtocol_SendDeviceInfo(const uint8_t *request)

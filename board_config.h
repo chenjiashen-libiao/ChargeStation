@@ -8,8 +8,8 @@
 #define BOARD_UART_ENABLE                0
 
 /* 程序信息：固定写入Flash的0x08004000起始位置 */
-#define BOARD_VERSION                     0x0002
-#define BOARD_DEVICE_TYPE                 69
+#define BOARD_VERSION                     0x0003
+#define BOARD_DEVICE_TYPE                 74
 
 /* 注册信息：STM32F103C8末段独占1KB页 */
 #define BOARD_UID_ADDRESS                 0x1FFFF7E8
