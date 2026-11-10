@@ -13,10 +13,26 @@
 #define CHARGE_TEST_CURRENT_MA          5000      // 内阻测试目标电流，单位mA
 #define CHARGE_CURRENT_INTEGRAL_LIMIT   70000000  // 电流环积分绝对值上限
 
+/* CC/CV外环参数，数值为初值，需台架整定 */
+#define CHARGE_TARGET_VOLTAGE_MV        5400      // 恒压目标，按各相输出电压最大值控制
+#define CHARGE_HARD_OVERVOLT_MV         5600      // 超过即在采样中断里立刻关主输出
+#define CHARGE_TOTAL_CURRENT_MAX_MA     90000     // 三相总电流上限
+#define CHARGE_PHASE_FLOOR_MA           6000      // 单相最小电流，沿用旧逻辑下限
+#define CHARGE_LOOP_PERIOD_MS           20        // 外环周期
+#define CHARGE_RAMP_UP_MA_PER_LOOP      600       // 升流斜率，约30A/s
+#define CHARGE_RAMP_DOWN_MA_PER_LOOP    2000      // 降流斜率上限，约100A/s
+#define CHARGE_VOLTAGE_GAIN_MA_PER_MV   8         // 电压误差到电流步进的增益
+#define CHARGE_DONE_CONFIRM_LOOPS       50        // 降到最小电流且达标后的确认次数
+#define CHARGE_DETACH_CHECK_MIN_MA      10000     // 指令总电流不低于此值才做脱离判断
+#define CHARGE_DETACH_CURRENT_MA        1500      // 实测总电流低于此值视为电池已拔出
+#define CHARGE_DETACH_CONFIRM_LOOPS     5         // 脱离判断确认次数
+#define CHARGE_DETACH_SETTLE_LOOPS      25        // 启动后忽略脱离判断的次数
+
 static volatile int32_t targetCurrent[CHARGE_PHASE_COUNT];
 static volatile int32_t currentIntegral[CHARGE_PHASE_COUNT];
 static volatile int32_t currentCorrection[CHARGE_PHASE_COUNT];
 static volatile int32_t pwmFeedforward[CHARGE_PHASE_COUNT];
+static int32_t phaseCap[CHARGE_PHASE_COUNT];
 static volatile uint16_t pwmOutput[CHARGE_PHASE_COUNT];
 static volatile uint16_t outputMask;
 static volatile uint8_t upgradeMode;
@@ -38,6 +54,11 @@ static void ChargeControl_Precharge(void);
 static void ChargeControl_TestResistance(void);
 static void ChargeControl_StartCharging(void);
 static void ChargeControl_UpdateCurrentLoop(uint8_t phase);
+static void ChargeControl_RegulateCharging(void);
+static int32_t ChargeControl_MaxActiveVoltage(void);
+static uint8_t ChargeControl_AllOutputsAtLeast(int32_t voltage);
+static void ChargeControl_GetCurrentLimits(int32_t *totalMin, int32_t *totalMax);
+static void ChargeControl_ApplyTotalCurrent(int32_t total);
 
 void ChargeControl_Init(void)
 { // 初始化功率控制并保持全部输出关闭
@@ -53,6 +74,7 @@ void ChargeControl_Init(void)
   for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
   {
     targetCurrent[phase] = 0;
+    phaseCap[phase] = 0;
     currentIntegral[phase] = 0;
     currentCorrection[phase] = 0;
     pwmFeedforward[phase] = CHARGE_PWM_MIN_COMPARE;
@@ -63,9 +85,6 @@ void ChargeControl_Init(void)
 
 void ChargeControl_Task(void const *argument)
 { // 按参考工程执行电池检测、内阻测试和充电循环
-  uint8_t reduceCount;
-  uint8_t phase;
-
   (void)argument;
   osDelay(20);
   for (;;)
@@ -100,42 +119,7 @@ void ChargeControl_Task(void const *argument)
     ChargeControl_Precharge();
     ChargeControl_TestResistance();
     ChargeControl_StartCharging();
-
-    reduceCount = 0;
-    for (;;)
-    {
-      // 输出超过5.4V时逐步降流，连续五次后结束本轮充电
-      osDelay(301);
-      if (ChargeControl_AnyOutputHigh(5400))
-      {
-        for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
-        {
-          targetCurrent[phase] -= 5000;
-          if (targetCurrent[phase] <= 5000)
-          {
-            targetCurrent[phase] = 6000;
-          }
-        }
-        osDelay(50);
-        reduceCount++;
-      }
-      if (reduceCount > 4)
-      {
-        break;
-      }
-      if (ChargePWM_HasBreakFault())
-      {
-        ChargePWM_ClearBreakFault();
-        osDelay(5000);
-        break;
-      }
-      if (!ChargePWM_IsMainEnabled() || !ChargeControl_AnyPhaseEnabled() ||
-        !ChargePWM_IsMosEnabled())
-      {
-        osDelay(5000);
-        break;
-      }
-    }
+    ChargeControl_RegulateCharging();
   }
 }
 
@@ -173,6 +157,12 @@ void ChargeControl_Update(void)
       (g_I[phase] < -CHARGE_OVERCURRENT_MA))
     {
       ChargeControl_DisablePhase(phase);
+    }
+
+    if (ChargePWM_IsPhaseEnabled(phase) &&
+      (g_out_Volt[phase] > CHARGE_HARD_OVERVOLT_MV))
+    {
+      ChargePWM_DisableMain();
     }
 
     if (updateFeedforward && (g_intvolt[phase] > 0))
@@ -470,6 +460,7 @@ static void ChargeControl_TestResistance(void)
         outputMask &= (uint16_t)~phaseMasks[phase];
       }
     }
+    phaseCap[phase] = targetCurrent[phase];
   }
 }
 
@@ -519,4 +510,226 @@ static void ChargeControl_UpdateCurrentLoop(uint8_t phase)
     pwm = CHARGE_PWM_MIN_COMPARE;
   }
   pwmOutput[phase] = (uint16_t)pwm;
+}
+
+static void ChargeControl_RegulateCharging(void)
+{ // CC/CV外环：电压误差调总电流上限，再均分给各相电流环
+  int32_t limit;
+  int32_t totalMin;
+  int32_t totalMax;
+  int32_t totalCurrent;
+  int32_t filtered;
+  int32_t step;
+  uint16_t doneCount = 0;
+  uint16_t detachCount = 0;
+  uint16_t settleCount = 0;
+  uint8_t holding = 0;
+  uint8_t phase;
+
+  filtered = ChargeControl_MaxActiveVoltage();
+  ChargeControl_GetCurrentLimits(&totalMin, &totalMax);
+  limit = totalMin;
+  for (;;)
+  {
+    if (!holding)
+    {
+      ChargeControl_ApplyTotalCurrent(limit);
+    }
+    osDelay(CHARGE_LOOP_PERIOD_MS);
+    if (upgradeMode)
+    {
+      return;
+    }
+    if (ChargePWM_HasBreakFault())
+    {
+      ChargePWM_ClearBreakFault();
+      osDelay(5000);
+      return;
+    }
+    if (holding)
+    {
+      // 保持段输出已关，电压回落到有效范围或电池拔出则回到外层重新检测
+      if (!ChargeControl_AllOutputsAtLeast(CHARGE_VALID_MAX_MV))
+      {
+        return;
+      }
+      continue;
+    }
+    if (!ChargePWM_IsMainEnabled() || !ChargeControl_AnyPhaseEnabled() ||
+      !ChargePWM_IsMosEnabled())
+    {
+      osDelay(5000);
+      return;
+    }
+
+    filtered += (ChargeControl_MaxActiveVoltage() - filtered) / 4;
+    ChargeControl_GetCurrentLimits(&totalMin, &totalMax);
+    step = (CHARGE_TARGET_VOLTAGE_MV - filtered) * CHARGE_VOLTAGE_GAIN_MA_PER_MV;
+    if (step > CHARGE_RAMP_UP_MA_PER_LOOP)
+    {
+      step = CHARGE_RAMP_UP_MA_PER_LOOP;
+    }
+    if (step < -CHARGE_RAMP_DOWN_MA_PER_LOOP)
+    {
+      step = -CHARGE_RAMP_DOWN_MA_PER_LOOP;
+    }
+    limit += step;
+    if (limit > totalMax)
+    {
+      limit = totalMax;
+    }
+    if (limit < totalMin)
+    {
+      limit = totalMin;
+    }
+
+    // 拔出后指令电流仍高而实测电流几乎为零，用电流判断脱离
+    if (settleCount < CHARGE_DETACH_SETTLE_LOOPS)
+    {
+      settleCount++;
+    }
+    else
+    {
+      totalCurrent = 0;
+      for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+      {
+        if (ChargePWM_IsPhaseEnabled(phase))
+        {
+          totalCurrent += g_I[phase];
+        }
+      }
+      if ((limit >= CHARGE_DETACH_CHECK_MIN_MA) &&
+        (totalCurrent < CHARGE_DETACH_CURRENT_MA))
+      {
+        detachCount++;
+        if (detachCount >= CHARGE_DETACH_CONFIRM_LOOPS)
+        {
+          return;
+        }
+      }
+      else
+      {
+        detachCount = 0;
+      }
+    }
+
+    // 电流降到最小值电压仍达标说明已补足，关输出保持
+    if ((limit <= totalMin) && (filtered >= CHARGE_TARGET_VOLTAGE_MV))
+    {
+      doneCount++;
+      if (doneCount >= CHARGE_DONE_CONFIRM_LOOPS)
+      {
+        ChargeControl_DisableOutputs();
+        ChargeControl_SetAllTargets(0);
+        holding = 1;
+      }
+    }
+    else
+    {
+      doneCount = 0;
+    }
+  }
+}
+
+static int32_t ChargeControl_MaxActiveVoltage(void)
+{ // 已开启各相输出电压的最大值，无开启相时取全部相
+  int32_t maximum = 0;
+  uint8_t anyEnabled = 0;
+  uint8_t phase;
+
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    anyEnabled |= ChargePWM_IsPhaseEnabled(phase);
+  }
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    if ((!anyEnabled || ChargePWM_IsPhaseEnabled(phase)) &&
+      (g_out_Volt[phase] > maximum))
+    {
+      maximum = g_out_Volt[phase];
+    }
+  }
+  return maximum;
+}
+
+static uint8_t ChargeControl_AllOutputsAtLeast(int32_t voltage)
+{ // 判断三相输出电压是否都不低于给定阈值
+  uint8_t phase;
+
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    if (g_out_Volt[phase] < voltage)
+    {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static void ChargeControl_GetCurrentLimits(int32_t *totalMin, int32_t *totalMax)
+{ // 按当前开启的相计算总电流的最小值与最大值
+  int32_t minimum = 0;
+  int32_t maximum = 0;
+  uint8_t phase;
+
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    if (ChargePWM_IsPhaseEnabled(phase))
+    {
+      maximum += phaseCap[phase];
+      minimum += (phaseCap[phase] < CHARGE_PHASE_FLOOR_MA) ?
+        phaseCap[phase] : CHARGE_PHASE_FLOOR_MA;
+    }
+  }
+  if (maximum > CHARGE_TOTAL_CURRENT_MAX_MA)
+  {
+    maximum = CHARGE_TOTAL_CURRENT_MAX_MA;
+  }
+  if (minimum > maximum)
+  {
+    minimum = maximum;
+  }
+  *totalMin = minimum;
+  *totalMax = maximum;
+}
+
+static void ChargeControl_ApplyTotalCurrent(int32_t total)
+{ // 总电流先均分给开启的相，超出单相上限的部分再转给有余量的相
+  int32_t remaining = total;
+  int32_t share;
+  int32_t add;
+  uint8_t active = 0;
+  uint8_t phase;
+
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    active += ChargePWM_IsPhaseEnabled(phase);
+  }
+  if (active == 0)
+  {
+    return;
+  }
+  share = total / active;
+  for (phase = 0; phase < CHARGE_PHASE_COUNT; phase++)
+  {
+    if (ChargePWM_IsPhaseEnabled(phase))
+    {
+      targetCurrent[phase] = (share < phaseCap[phase]) ? share : phaseCap[phase];
+      remaining -= targetCurrent[phase];
+    }
+    else
+    {
+      targetCurrent[phase] = 0;
+    }
+  }
+  for (phase = 0; (phase < CHARGE_PHASE_COUNT) && (remaining > 0); phase++)
+  {
+    if (ChargePWM_IsPhaseEnabled(phase) && (targetCurrent[phase] < phaseCap[phase]))
+    {
+      add = phaseCap[phase] - targetCurrent[phase];
+      add = (add < remaining) ? add : remaining;
+      targetCurrent[phase] += add;
+      remaining -= add;
+    }
+  }
 }
