@@ -14,7 +14,7 @@
 #define CHARGE_CURRENT_INTEGRAL_LIMIT   70000000  // 电流环积分绝对值上限
 
 /* CC/CV外环参数，数值为初值，需台架整定 */
-#define CHARGE_TARGET_VOLTAGE_MV        5400      // 恒压目标，按各相输出电压最大值控制
+#define CHARGE_TARGET_VOLTAGE_MV        5350      // 恒压目标，按各相输出电压最大值控制
 #define CHARGE_HARD_OVERVOLT_MV         5600      // 超过即在采样中断里立刻关主输出
 #define CHARGE_TOTAL_CURRENT_MAX_MA     90000     // 三相总电流上限
 #define CHARGE_PHASE_FLOOR_MA           6000      // 单相最小电流，沿用旧逻辑下限
